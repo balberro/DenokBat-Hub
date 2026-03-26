@@ -24,3 +24,11 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+ODOO_URL = "https://vls18755.dinaserver.com"
+ODOO_DB = "dinaserver"
+ODOO_USERNAME = "dinaodooapi"
+JWT_EXPIRES_IN = "7d"

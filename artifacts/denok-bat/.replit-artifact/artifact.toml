@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Denok Bat — Asociación de Jubilados"
+version = "1.0.0"
+id = "artifacts/denok-bat"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23494
+
+[services.development]
+run = "pnpm --filter @workspace/denok-bat run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/denok-bat", "run", "build" ]
+publicDir = "artifacts/denok-bat/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23494"
+BASE_PATH = "/"
