@@ -6,7 +6,7 @@ type Translations = Record<string, { es: string; eu: string }>;
 const dictionary: Translations = {
   // Navigation
   'nav.home': { es: 'Inicio', eu: 'Hasiera' },
-  'nav.about': { es: 'Quiénes somos', eu: 'Nor gara' },
+  'nav.about': { es: 'Nosotros', eu: 'Nor gara' },
   'nav.active_aging': { es: 'Envejecimiento activo', eu: 'Zahartze aktiboa' },
   'nav.activities': { es: 'Actividades', eu: 'Jarduerak' },
   'nav.events': { es: 'Eventos', eu: 'Gertaerak' },
