@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Menu, X, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "@/i18n/translations";
@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [location] = useLocation();
   const { t, lang, setLang } = useTranslation();
   const user = useStore((s) => s.user);
 
-  const navLinks = [
+  const allNavLinks = [
     { href: "/", label: 'nav.home' },
     { href: "/quienes-somos", label: 'nav.about' },
     { href: "/actividades", label: 'nav.activities' },
@@ -19,6 +20,8 @@ export function Navbar() {
     { href: "/servicios", label: 'nav.services' },
     { href: "/contacto", label: 'nav.contact' },
   ];
+
+  const navLinks = allNavLinks.filter((link) => link.href !== location);
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-lg border-b border-border/50 shadow-sm">
