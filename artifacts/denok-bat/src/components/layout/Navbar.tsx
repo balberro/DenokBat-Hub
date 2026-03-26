@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Menu, X, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "@/i18n/translations";
@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
-  const [location] = useLocation();
   const { t, lang, setLang } = useTranslation();
   const user = useStore((s) => s.user);
 
@@ -47,11 +46,7 @@ export function Navbar() {
               <Link 
                 key={link.href} 
                 href={link.href}
-                className={`px-4 py-2 rounded-xl text-[17px] font-medium transition-colors ${
-                  location === link.href 
-                    ? "bg-accent text-accent-foreground" 
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                className="px-4 py-2 rounded-xl text-[17px] font-medium transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 {t(link.label)}
               </Link>
@@ -126,11 +121,7 @@ export function Navbar() {
                 key={link.href} 
                 href={link.href}
                 onClick={() => setIsOpen(false)}
-                className={`block px-4 py-4 rounded-xl text-lg font-medium ${
-                  location === link.href 
-                    ? "bg-accent text-accent-foreground" 
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
+                className="block px-4 py-4 rounded-xl text-lg font-medium text-muted-foreground hover:bg-muted"
               >
                 {t(link.label)}
               </Link>
