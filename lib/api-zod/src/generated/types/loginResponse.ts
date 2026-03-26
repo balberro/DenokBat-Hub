@@ -5,7 +5,9 @@
  * Denok Bat - API para asociación de jubilados, integración con Odoo
  * OpenAPI spec version: 0.1.0
  */
+import type { UserProfile } from "./userProfile";
 
-export interface HealthStatus {
-  status: string;
+export interface LoginResponse {
+  token: string;
+  user: UserProfile;
 }

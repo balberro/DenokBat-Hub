@@ -1,22 +1,37 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Denok Bat - API para asociación de jubilados, integración con Odoo
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: actividades
+    description: Actividades de la asociación
+  - name: eventos
+    description: Eventos y calendario
+  - name: noticias
+    description: Noticias y divulgación
+  - name: servicios
+    description: Servicios de la asociación
+  - name: socios
+    description: Gestión de socios
+  - name: contacto
+    description: Formulario de contacto
+  - name: sugerencias
+    description: Sugerencias de usuarios
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +39,302 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Autenticar usuario con Odoo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Obtener perfil del usuario autenticado
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Perfil del usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /actividades:
+    get:
+      operationId: getActividades
+      tags: [actividades]
+      summary: Listar actividades
+      parameters:
+        - name: categoria
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Lista de actividades
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActividadesList"
+
+  /actividades/{id}:
+    get:
+      operationId: getActividad
+      tags: [actividades]
+      summary: Obtener detalle de una actividad
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Detalle de actividad
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Actividad"
+        "404":
+          description: No encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /actividades/{id}/inscribir:
+    post:
+      operationId: inscribirActividad
+      tags: [actividades]
+      summary: Inscribirse en una actividad
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inscripción realizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InscripcionResponse"
+        "400":
+          description: Error en inscripción
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: cancelarInscripcionActividad
+      tags: [actividades]
+      summary: Cancelar inscripción en una actividad
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inscripción cancelada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InscripcionResponse"
+
+  /eventos:
+    get:
+      operationId: getEventos
+      tags: [eventos]
+      summary: Listar eventos
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Lista de eventos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventosList"
+
+  /eventos/{id}:
+    get:
+      operationId: getEvento
+      tags: [eventos]
+      summary: Obtener detalle de un evento
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Detalle del evento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evento"
+        "404":
+          description: No encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /noticias:
+    get:
+      operationId: getNoticias
+      tags: [noticias]
+      summary: Listar noticias
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Lista de noticias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticiasList"
+
+  /noticias/{id}:
+    get:
+      operationId: getNoticia
+      tags: [noticias]
+      summary: Obtener detalle de una noticia
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Detalle de la noticia
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Noticia"
+        "404":
+          description: No encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /servicios:
+    get:
+      operationId: getServicios
+      tags: [servicios]
+      summary: Listar servicios de la asociación
+      responses:
+        "200":
+          description: Lista de servicios
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiciosList"
+
+  /contacto:
+    post:
+      operationId: enviarContacto
+      tags: [contacto]
+      summary: Enviar formulario de contacto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactoRequest"
+      responses:
+        "200":
+          description: Mensaje enviado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /sugerencias:
+    post:
+      operationId: enviarSugerencia
+      tags: [sugerencias]
+      summary: Enviar una sugerencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SugerenciaRequest"
+      responses:
+        "200":
+          description: Sugerencia enviada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +344,297 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+      required:
+        - token
+        - user
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [usuario, socio, delegado, directivo, contable, administrador]
+        avatar:
+          type: ["string", "null"]
+        groupId:
+          type: ["integer", "null"]
+      required:
+        - id
+        - name
+        - role
+
+    Actividad:
+      type: object
+      properties:
+        id:
+          type: integer
+        nombre:
+          type: string
+        nombreEu:
+          type: ["string", "null"]
+        descripcion:
+          type: ["string", "null"]
+        descripcionEu:
+          type: ["string", "null"]
+        categoria:
+          type: string
+        horario:
+          type: ["string", "null"]
+        diasSemana:
+          type: ["string", "null"]
+        plazasTotal:
+          type: ["integer", "null"]
+        plazasDisponibles:
+          type: ["integer", "null"]
+        imagen:
+          type: ["string", "null"]
+        estado:
+          type: string
+          enum: [disponible, lista_espera, cerrada]
+        inscrito:
+          type: boolean
+      required:
+        - id
+        - nombre
+        - categoria
+        - estado
+        - inscrito
+
+    ActividadesList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Actividad"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    InscripcionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        estado:
+          type: string
+      required:
+        - success
+        - message
+        - estado
+
+    Evento:
+      type: object
+      properties:
+        id:
+          type: integer
+        nombre:
+          type: string
+        nombreEu:
+          type: ["string", "null"]
+        descripcion:
+          type: ["string", "null"]
+        descripcionEu:
+          type: ["string", "null"]
+        fechaInicio:
+          type: string
+        fechaFin:
+          type: ["string", "null"]
+        lugar:
+          type: ["string", "null"]
+        imagen:
+          type: ["string", "null"]
+        plazasDisponibles:
+          type: ["integer", "null"]
+        inscrito:
+          type: boolean
+      required:
+        - id
+        - nombre
+        - fechaInicio
+        - inscrito
+
+    EventosList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Evento"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    Noticia:
+      type: object
+      properties:
+        id:
+          type: integer
+        titulo:
+          type: string
+        tituloEu:
+          type: ["string", "null"]
+        resumen:
+          type: ["string", "null"]
+        resumenEu:
+          type: ["string", "null"]
+        contenido:
+          type: ["string", "null"]
+        contenidoEu:
+          type: ["string", "null"]
+        fecha:
+          type: string
+        imagen:
+          type: ["string", "null"]
+        categoria:
+          type: ["string", "null"]
+        autor:
+          type: ["string", "null"]
+      required:
+        - id
+        - titulo
+        - fecha
+
+    NoticiasList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Noticia"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    Servicio:
+      type: object
+      properties:
+        id:
+          type: integer
+        nombre:
+          type: string
+        nombreEu:
+          type: ["string", "null"]
+        descripcion:
+          type: ["string", "null"]
+        descripcionEu:
+          type: ["string", "null"]
+        icono:
+          type: ["string", "null"]
+        contacto:
+          type: ["string", "null"]
+        telefono:
+          type: ["string", "null"]
+      required:
+        - id
+        - nombre
+
+    ServiciosList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Servicio"
+      required:
+        - items
+
+    ContactoRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+        email:
+          type: string
+        telefono:
+          type: ["string", "null"]
+        mensaje:
+          type: string
+      required:
+        - nombre
+        - email
+        - mensaje
+
+    SugerenciaRequest:
+      type: object
+      properties:
+        nombre:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        categoria:
+          type: string
+        mensaje:
+          type: string
+      required:
+        - categoria
+        - mensaje

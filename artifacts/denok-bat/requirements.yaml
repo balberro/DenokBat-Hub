@@ -1,0 +1,21 @@
+packages:
+  "framer-motion": "For smooth page transitions and micro-interactions"
+  "zustand": "For global state management (language, auth session)"
+  "date-fns": "For formatting event and activity dates"
+  "clsx": "For conditional class names merging"
+  "tailwind-merge": "For merging tailwind classes safely"
+  "react-hook-form": "For robust form handling"
+  "@hookform/resolvers": "For Zod validation integration with forms"
+
+images:
+  - path: "artifacts/denok-bat/public/images/hero-seniors.png"
+    description: "A warm, high-quality illustration of active, happy senior citizens in a park, modern vector style with brand colors green (#A6CE39) and orange (#FAA61A)"
+    aspect_ratio: "16:9"
+  - path: "artifacts/denok-bat/public/images/pattern-bg.png"
+    description: "Subtle abstract geometric background pattern using light warm greys and very soft brand greens, suitable for a clean website background"
+    aspect_ratio: "16:9"
+
+notes:
+  - The app implements a robust fallback to mock data if the Odoo API is unreachable, displaying a 'Demo Mode' banner.
+  - Bilingual support is implemented natively via Zustand.
+  - Large tap targets (min 48px) and high-contrast text used for elderly accessibility.
