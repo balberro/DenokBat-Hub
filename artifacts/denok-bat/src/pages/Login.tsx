@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { useAppLogin } from "@/hooks/use-app-api";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 
 export default function Login() {
   const { t } = useTranslation();
@@ -31,7 +31,7 @@ export default function Login() {
           {t('nav.login')}
         </h2>
         <p className="text-lg text-muted-foreground text-balance">
-          Accede a tu cuenta para inscribirte en actividades y gestionar tu perfil.
+          {t('auth.login_subtitle')}
         </p>
       </div>
 
@@ -60,6 +60,10 @@ export default function Login() {
               />
             </div>
 
+            {loginMutation.isError && (
+              <p className="text-sm text-red-600 text-center">{t('common.error')}</p>
+            )}
+
             <Button 
               type="submit" 
               className="w-full text-lg h-14 mt-4"
@@ -70,7 +74,12 @@ export default function Login() {
           </form>
           
           <div className="mt-8 text-center text-muted-foreground">
-            <p>¿No eres socio? <a href="/contacto" className="text-primary font-bold hover:underline">Contacta con nosotros</a></p>
+            <p>
+              {t('auth.no_member')}{' '}
+              <Link href="/contacto" className="text-primary font-bold hover:underline">
+                {t('auth.contact_us')}
+              </Link>
+            </p>
           </div>
         </div>
       </div>

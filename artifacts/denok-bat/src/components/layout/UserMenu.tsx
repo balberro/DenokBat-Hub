@@ -27,10 +27,6 @@ const roleMenus: Record<string, MenuItem[]> = {
     { action: "logout", label: "nav.logout" },
   ],
   directivo: [
-    { href: "/mis-eventos", label: "menu.mis_eventos" },
-    { href: "/mis-inscripciones", label: "menu.mis_inscripciones" },
-    { href: "/mis-pagos", label: "menu.mis_pagos" },
-    { href: "/mis-sugerencias", label: "menu.mis_sugerencias" },
     { href: "/admin/eventos", label: "menu.admin_eventos" },
     { href: "/admin/actividades", label: "menu.admin_actividades" },
     { href: "/perfil", label: "menu.perfil" },

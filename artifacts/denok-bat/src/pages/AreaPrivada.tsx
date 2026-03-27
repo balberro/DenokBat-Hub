@@ -1,29 +1,62 @@
 import { useStore } from "@/store/use-store";
 import { useTranslation } from "@/i18n/translations";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { Construction } from "lucide-react";
 
-const sections: Record<string, { labelKey: string; roles: string[] }> = {
-  "/perfil":                  { labelKey: "menu.perfil",             roles: ["usuario","socio","delegado","directivo","contable","administrador"] },
-  "/mis-eventos":             { labelKey: "menu.mis_eventos",         roles: ["socio","directivo"] },
-  "/mis-inscripciones":       { labelKey: "menu.mis_inscripciones",   roles: ["socio","directivo"] },
-  "/mis-pagos":               { labelKey: "menu.mis_pagos",           roles: ["socio","directivo"] },
-  "/mis-sugerencias":         { labelKey: "menu.mis_sugerencias",     roles: ["socio","directivo"] },
-  "/mi-grupo":                { labelKey: "menu.mi_grupo",            roles: ["delegado"] },
-  "/inscripciones-grupo":     { labelKey: "menu.inscripciones_grupo", roles: ["delegado"] },
-  "/admin/eventos":           { labelKey: "menu.admin_eventos",       roles: ["directivo","administrador"] },
-  "/admin/actividades":       { labelKey: "menu.admin_actividades",   roles: ["directivo","administrador"] },
-  "/admin/socios":            { labelKey: "menu.gestion_socios",      roles: ["contable","administrador"] },
-  "/admin/contabilidad":      { labelKey: "menu.gestion_contable",    roles: ["contable","administrador"] },
-  "/admin/subvenciones":      { labelKey: "menu.subvenciones",        roles: ["contable","administrador"] },
-  "/admin/divulgacion":       { labelKey: "menu.divulgacion_admin",   roles: ["contable","administrador"] },
-  "/admin/documentacion":     { labelKey: "menu.documentacion",       roles: ["contable","administrador"] },
-  "/admin/roles":             { labelKey: "menu.roles",               roles: ["administrador"] },
-  "/admin/proveedores":       { labelKey: "menu.proveedores",         roles: ["administrador"] },
-  "/admin/odoo":              { labelKey: "menu.odoo",                roles: ["administrador"] },
-  "/admin/app":               { labelKey: "menu.app",                 roles: ["administrador"] },
+import MiPerfil from "./area/MiPerfil";
+import MisEventos from "./area/MisEventos";
+import MisInscripciones from "./area/MisInscripciones";
+import MisPagos from "./area/MisPagos";
+import MisSugerencias from "./area/MisSugerencias";
+import MiGrupo from "./area/MiGrupo";
+import InscripcionesGrupo from "./area/InscripcionesGrupo";
+import AdminEventos from "./area/AdminEventos";
+import AdminActividades from "./area/AdminActividades";
+import GestionSocios from "./area/GestionSocios";
+import AdminRoles from "./area/AdminRoles";
+import SeccionContable from "./area/SeccionContable";
+import SeccionAdmin from "./area/SeccionAdmin";
+
+const allowedRoles: Record<string, string[]> = {
+  "/perfil":              ["usuario","socio","delegado","directivo","contable","administrador"],
+  "/mis-eventos":         ["socio"],
+  "/mis-inscripciones":   ["socio"],
+  "/mis-pagos":           ["socio"],
+  "/mis-sugerencias":     ["socio"],
+  "/mi-grupo":            ["delegado"],
+  "/inscripciones-grupo": ["delegado"],
+  "/admin/eventos":       ["directivo","administrador"],
+  "/admin/actividades":   ["directivo","administrador"],
+  "/admin/socios":        ["contable","administrador"],
+  "/admin/contabilidad":  ["contable","administrador"],
+  "/admin/subvenciones":  ["contable","administrador"],
+  "/admin/divulgacion":   ["contable","administrador"],
+  "/admin/documentacion": ["contable","administrador"],
+  "/admin/roles":         ["administrador"],
+  "/admin/proveedores":   ["administrador"],
+  "/admin/odoo":          ["administrador"],
+  "/admin/app":           ["administrador"],
+};
+
+const components: Record<string, React.ComponentType> = {
+  "/perfil":              MiPerfil,
+  "/mis-eventos":         MisEventos,
+  "/mis-inscripciones":   MisInscripciones,
+  "/mis-pagos":           MisPagos,
+  "/mis-sugerencias":     MisSugerencias,
+  "/mi-grupo":            MiGrupo,
+  "/inscripciones-grupo": InscripcionesGrupo,
+  "/admin/eventos":       AdminEventos,
+  "/admin/actividades":   AdminActividades,
+  "/admin/socios":        GestionSocios,
+  "/admin/contabilidad":  SeccionContable,
+  "/admin/subvenciones":  SeccionContable,
+  "/admin/divulgacion":   SeccionContable,
+  "/admin/documentacion": SeccionContable,
+  "/admin/roles":         AdminRoles,
+  "/admin/proveedores":   SeccionAdmin,
+  "/admin/odoo":          SeccionAdmin,
+  "/admin/app":           SeccionAdmin,
 };
 
 export default function AreaPrivada() {
@@ -33,59 +66,34 @@ export default function AreaPrivada() {
 
   if (!user) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
-        <p className="text-xl text-muted-foreground mb-6">
-          {t('auth.login_cta')}
-        </p>
+      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 gap-6">
+        <p className="text-xl text-muted-foreground">{t("auth.login_subtitle")}</p>
         <Link href="/login">
-          <Button size="lg">{t('nav.login')}</Button>
+          <Button size="lg">{t("nav.login")}</Button>
         </Link>
       </div>
     );
   }
 
-  const section = sections[location];
-
-  if (!section) {
+  const roles = allowedRoles[location];
+  if (roles && !roles.includes(user.role)) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
-        <p className="text-xl text-muted-foreground">Sección no encontrada</p>
+      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 gap-4">
+        <p className="text-2xl font-bold text-foreground">Acceso restringido</p>
+        <p className="text-muted-foreground">No tienes permisos para esta sección.</p>
+        <Link href="/"><Button variant="outline">{t("common.back")}</Button></Link>
       </div>
     );
   }
 
-  const hasAccess = section.roles.includes(user.role);
-
-  if (!hasAccess) {
+  const Component = components[location];
+  if (!Component) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
-        <p className="text-xl font-semibold text-foreground mb-2">Acceso restringido</p>
-        <p className="text-muted-foreground mb-6">No tienes permisos para acceder a esta sección.</p>
-        <Link href="/">
-          <Button variant="outline">Volver al inicio</Button>
-        </Link>
+        <p className="text-xl text-muted-foreground">{t("common.no_data")}</p>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-16">
-      <div className="flex flex-col items-center text-center gap-6">
-        <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Construction className="w-10 h-10 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">{t(section.labelKey)}</h1>
-          <p className="text-muted-foreground text-lg">
-            Esta sección está en desarrollo. Pronto estará disponible.
-          </p>
-        </div>
-        <div className="flex gap-3 mt-4">
-          <Link href="/">
-            <Button variant="outline">Volver al inicio</Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  return <Component />;
 }
