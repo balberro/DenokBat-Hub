@@ -1,9 +1,13 @@
 import { useStore } from '@/store/use-store';
 import { useCallback } from 'react';
 
-type Translations = Record<string, { es: string; eu: string }>;
+export type Lang = 'es' | 'eu';
+export type TranslationEntry = { es: string; eu: string };
+export type Translations = Record<string, TranslationEntry>;
 
-const dictionary: Translations = {
+export const OVERRIDES_KEY = 'denok-bat-translations';
+
+export const baseDictionary: Translations = {
   // Navigation
   'nav.home': { es: 'Inicio', eu: 'Hasiera' },
   'nav.about': { es: 'Nosotros', eu: 'Nor gara' },
@@ -35,6 +39,7 @@ const dictionary: Translations = {
   'menu.documentacion': { es: 'Documentación', eu: 'Dokumentazioa' },
   'menu.roles': { es: 'Roles', eu: 'Rolak' },
   'menu.proveedores': { es: 'Proveedores', eu: 'Hornitzaileak' },
+  'menu.textos': { es: 'Textos / Traducciones', eu: 'Testuak / Itzulpenak' },
   'menu.odoo': { es: 'Odoo', eu: 'Odoo' },
   'menu.app': { es: 'App', eu: 'App' },
 
@@ -184,19 +189,57 @@ const dictionary: Translations = {
   'admin_roles.new_role': { es: 'Nuevo rol', eu: 'Rol berria' },
   'admin_roles.email_sent': { es: 'Email enviado al usuario', eu: 'Emaila erabiltzaileari bidali zaio' },
 
+  // Textos admin
+  'textos.title': { es: 'Textos y traducciones', eu: 'Testuak eta itzulpenak' },
+  'textos.subtitle': { es: 'Edita los textos de la app en español y euskara. Los cambios se aplican al instante.', eu: 'Editatu aplikazioaren testuak gaztelaniaz eta euskaraz. Aldaketak berehala aplikatzen dira.' },
+  'textos.key': { es: 'Clave', eu: 'Gakoa' },
+  'textos.spanish': { es: 'Español', eu: 'Gaztelania' },
+  'textos.basque': { es: 'Euskara', eu: 'Euskara' },
+  'textos.modified': { es: 'Modificada', eu: 'Aldatuta' },
+  'textos.save_all': { es: 'Guardar todos los cambios', eu: 'Aldaketa guztiak gorde' },
+  'textos.reset': { es: 'Restablecer original', eu: 'Jatorrizkoa berrezarri' },
+  'textos.reset_all': { es: 'Restablecer todo', eu: 'Dena berrezarri' },
+  'textos.saved': { es: 'Cambios guardados. Se aplican en toda la app.', eu: 'Aldaketak gordeta. Aplikazio osoan aplikatzen dira.' },
+  'textos.category': { es: 'Categoría', eu: 'Kategoria' },
+  'textos.all': { es: 'Todas', eu: 'Denak' },
+
   // Demo Mode
   'demo.banner': { es: 'Modo Demo (Sin conexión a Odoo)', eu: 'Demo modua (Odoo konexiorik gabe)' },
 };
+
+function getOverrides(): Translations {
+  try {
+    const raw = localStorage.getItem(OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getMergedDictionary(): Translations {
+  const overrides = getOverrides();
+  const merged: Translations = { ...baseDictionary };
+  for (const key of Object.keys(overrides)) {
+    merged[key] = { ...baseDictionary[key], ...overrides[key] };
+  }
+  return merged;
+}
+
+export function saveOverrides(overrides: Translations) {
+  localStorage.setItem(OVERRIDES_KEY, JSON.stringify(overrides));
+  window.dispatchEvent(new Event('translations-updated'));
+}
 
 export function useTranslation() {
   const { lang, setLang } = useStore();
 
   const t = useCallback((key: string): string => {
-    if (!dictionary[key]) {
+    const dict = getMergedDictionary();
+    if (!dict[key]) {
       console.warn(`Translation key not found: ${key}`);
       return key;
     }
-    return dictionary[key][lang];
+    return dict[key][lang];
   }, [lang]);
 
   const tb = useCallback(<T extends Record<string, any>>(item: T, key: string): string => {

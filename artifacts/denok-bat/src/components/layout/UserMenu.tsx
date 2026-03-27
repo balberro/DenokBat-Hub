@@ -44,6 +44,7 @@ const roleMenus: Record<string, MenuItem[]> = {
   administrador: [
     { href: "/admin/roles", label: "menu.roles" },
     { href: "/admin/proveedores", label: "menu.proveedores" },
+    { href: "/admin/textos", label: "menu.textos" },
     { href: "/admin/odoo", label: "menu.odoo" },
     { href: "/admin/app", label: "menu.app" },
     { href: "/perfil", label: "menu.perfil" },

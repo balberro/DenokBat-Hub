@@ -56,6 +56,7 @@ function Router() {
       <Route path="/admin/divulgacion" component={AreaPrivada} />
       <Route path="/admin/documentacion" component={AreaPrivada} />
       <Route path="/admin/roles" component={AreaPrivada} />
+      <Route path="/admin/textos" component={AreaPrivada} />
       <Route path="/admin/proveedores" component={AreaPrivada} />
       <Route path="/admin/odoo" component={AreaPrivada} />
       <Route path="/admin/app" component={AreaPrivada} />
