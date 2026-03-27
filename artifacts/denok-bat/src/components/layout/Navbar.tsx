@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Menu, X, User as UserIcon } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { useStore } from "@/store/use-store";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "./UserMenu";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -35,7 +36,6 @@ export function Navbar() {
               alt="Denok Bat Logo" 
               className="h-12 w-auto transition-transform duration-300 group-hover:scale-105"
               onError={(e) => {
-                // Fallback text if logo fails to load
                 (e.target as HTMLImageElement).style.display = 'none';
                 (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
               }}
@@ -56,7 +56,7 @@ export function Navbar() {
             ))}
           </div>
 
-          {/* Actions */}
+          {/* Actions — Desktop */}
           <div className="hidden lg:flex items-center gap-4">
             <div className="flex bg-muted rounded-xl p-1">
               <button 
@@ -74,12 +74,7 @@ export function Navbar() {
             </div>
             
             {user ? (
-              <Link href="/panel">
-                <Button variant="outline" className="gap-2 rounded-xl">
-                  <UserIcon className="w-5 h-5" />
-                  {t('nav.dashboard')}
-                </Button>
-              </Link>
+              <UserMenu user={user} />
             ) : (
               <Link href="/login">
                 <Button className="rounded-xl">
@@ -129,22 +124,17 @@ export function Navbar() {
                 {t(link.label)}
               </Link>
             ))}
-            <div className="pt-4 mt-4 border-t border-border">
-              {user ? (
-                <Link href="/panel" onClick={() => setIsOpen(false)}>
-                  <Button className="w-full justify-center">
-                    <UserIcon className="w-5 h-5 mr-2" />
-                    {t('nav.dashboard')}
-                  </Button>
-                </Link>
-              ) : (
+            {user ? (
+              <UserMenu user={user} mobile onClose={() => setIsOpen(false)} />
+            ) : (
+              <div className="pt-4 mt-4 border-t border-border">
                 <Link href="/login" onClick={() => setIsOpen(false)}>
                   <Button className="w-full justify-center">
                     {t('nav.login')}
                   </Button>
                 </Link>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

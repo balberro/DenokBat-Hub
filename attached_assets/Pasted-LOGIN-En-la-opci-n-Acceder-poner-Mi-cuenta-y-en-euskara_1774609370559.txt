@@ -1,0 +1,37 @@
+LOGIN
+En la opción “Acceder” poner “Mi cuenta” y en euskara “Nire kontua”.
+El formulario que enlaza es adecuado pero dime que archivo es para cambiarle el texto.
+Tambien el formulario contacto quiero saber cual es para cambio de texto.
+Al enviar los datos el rol que debe asumir es de usuario y enviar email al admin para asignación de otro rol si lo considera.
+Una vez admitido en el boton “Acceder” debe aparecer el usuario y al pulsar en el debe desplegar persiana con las opciones correspondientes al rol del mismo.
+Estas son las opciones para cada rol:
+Usuario: 
+	Mi perfil => Formulario con datos de su perfil con opción de modificarlos incluida sustitución de foto.
+	Salir => Formulario de confirmación
+
+Socio:
+	Mis eventos => Resumen de eventos en estado abierto, dentro de periodo de inscripción, y los eventos en los que se haya inscrito con boton para acceder a modificar inscripciones de cada uno.
+	Mis inscripciones => Resumen de eventos y actividades en las que está inscrito con enlace apara modificar siituación de cada una.
+	Mis pagos => Resumen de todos los pagos realizados con enlace para ampliar información de cada uno.
+	Mis sugerencias=> Resumen de todas las sugerencias enviadas con enlace para ampliar información de cada una.
+
+Delegado:
+	Mi grupo => Listado de socios de su grupo. De cada socio debe de tener las opciones que tiene el mismo tanto de consulta como de modificación.
+	Listado de inscripción => Resumen de los socios de su grupo que se han inscrito al evento o actividad seleccionada. En el listado figurará en cabecera datos del evento o actividad y en líneas identidad del socio, género, cantidad pagada, parada de bus, subactivida, observaciones. Tendrá línea de totales.Tendrá opción de pago. Tendra opción a enviar el listado por email, whatsapp,telegram, impresora etc.
+
+Directivo: Además de las opciones de socio añadir
+	Eventos => Listado de eventos con estado y fechas con opción de acceso individual para modificación aportando comentario de lo acontecido y subir fotos. Tendrá opción de crear nuevo 
+	Actividades => Listado de actividades con estado y fechas con opción de acceso individual para modificación aportando comentario de lo acontecido y subir fotos. Tendrá opción de crear nueva.
+
+Contable:
+	Gestión de socios => Altas, bajas, modificaciones,listados, estadísticas,....
+	Gestión contable => Acceso a todos los formularios de facturación y contabilidad
+	Subvenciones => Acceso a formularios de solicitud y justificación
+	Divulgación => Acceso a formularios de gestión de la información
+	Documentación => Acceso a gestión de actas, solicitudes, convocatorias,...
+
+Admin: 
+	Roles => Formulario de adjudicación de roles
+	Proveedores => Altas, bajas y modificaciones
+	Odoo => Acceso total
+	Appp => Acceso total
