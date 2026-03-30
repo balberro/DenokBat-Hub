@@ -59,11 +59,20 @@ interface FiestaRow {
   nombre: string;
   nombreEu?: string | null;
   descripcion?: string | null;
+  descripcionEu?: string | null;
   fecha?: string | null;
   lugar?: string | null;
   fotoUrl?: string | null;
   programa?: string | null;
   memoria?: string | null;
+  menu?: string | null;
+  bus1?: string | null;
+  bus2?: string | null;
+  horaInicio?: string | null;
+  horaFin?: string | null;
+  precio?: string | null;
+  plazasTotal?: number | null;
+  plazasDisponibles?: number | null;
   estado?: string | null;
   publicado?: boolean;
 }
@@ -192,8 +201,11 @@ const emptyExcursion = (estado: EstadoExc): ExcursionRow => ({
 });
 
 const emptyFiesta = (): FiestaRow => ({
-  id: 0, nombre: "", fecha: "", lugar: "", fotoUrl: "",
-  programa: "", memoria: "", estado: "proxima",
+  id: 0, nombre: "", nombreEu: "", fecha: "", lugar: "", fotoUrl: "",
+  descripcion: "", descripcionEu: "", programa: "", memoria: "",
+  menu: "", bus1: "", bus2: "", horaInicio: "", horaFin: "",
+  precio: "0", plazasTotal: 0, plazasDisponibles: 0,
+  estado: "proxima", publicado: false,
 });
 
 const emptyViaje = (estado: EstadoViaje): ViajeRow => ({
@@ -232,15 +244,34 @@ function FiestaForm({ initial, onSave, onCancel, saving }: {
           <h2 className="font-bold text-foreground">Datos básicos</h2>
           <Field label="Nombre *"><input required className={inputCls} value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></Field>
           <Field label="Nombre en Euskara"><input className={inputCls} value={f.nombreEu ?? ""} onChange={e => setF({ ...f, nombreEu: e.target.value })} /></Field>
-          <Field label="Fecha"><input type="date" className={inputCls} value={f.fecha ?? ""} onChange={e => setF({ ...f, fecha: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha"><input type="date" className={inputCls} value={f.fecha ?? ""} onChange={e => setF({ ...f, fecha: e.target.value })} /></Field>
+            <Field label="Precio (€)"><input type="number" min="0" step="0.5" className={inputCls} value={f.precio ?? "0"} onChange={e => setF({ ...f, precio: e.target.value })} /></Field>
+          </div>
           <Field label="Lugar"><input className={inputCls} value={f.lugar ?? ""} onChange={e => setF({ ...f, lugar: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Hora inicio"><input type="time" className={inputCls} value={f.horaInicio ?? ""} onChange={e => setF({ ...f, horaInicio: e.target.value })} /></Field>
+            <Field label="Hora fin"><input type="time" className={inputCls} value={f.horaFin ?? ""} onChange={e => setF({ ...f, horaFin: e.target.value })} /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Plazas total"><input type="number" min="0" className={inputCls} value={f.plazasTotal ?? 0} onChange={e => setF({ ...f, plazasTotal: parseInt(e.target.value) || 0 })} /></Field>
+            <Field label="Plazas disponibles"><input type="number" min="0" className={inputCls} value={f.plazasDisponibles ?? 0} onChange={e => setF({ ...f, plazasDisponibles: parseInt(e.target.value) || 0 })} /></Field>
+          </div>
           <PhotoPicker label="Foto" url={f.fotoUrl ?? ""} onChange={url => setF({ ...f, fotoUrl: url })} />
         </div>
 
         <div className="bg-white rounded-2xl border border-border p-6 space-y-4">
           <h2 className="font-bold text-foreground">Descripción y programa</h2>
           <Field label="Descripción"><textarea className={textareaCls} rows={3} value={f.descripcion ?? ""} onChange={e => setF({ ...f, descripcion: e.target.value })} /></Field>
+          <Field label="Descripción en Euskara"><textarea className={textareaCls} rows={3} value={f.descripcionEu ?? ""} onChange={e => setF({ ...f, descripcionEu: e.target.value })} /></Field>
           <Field label="Programa detallado"><textarea className={textareaCls} rows={6} placeholder="Horario, actividades, actos..." value={f.programa ?? ""} onChange={e => setF({ ...f, programa: e.target.value })} /></Field>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-border p-6 space-y-4">
+          <h2 className="font-bold text-foreground">Logística</h2>
+          <Field label="Menú de comida"><input className={inputCls} placeholder="Ej: Pintxos + Bebida + Postre" value={f.menu ?? ""} onChange={e => setF({ ...f, menu: e.target.value })} /></Field>
+          <Field label="Parada de autobús 1"><input className={inputCls} placeholder="Ej: Sede Central 09:30" value={f.bus1 ?? ""} onChange={e => setF({ ...f, bus1: e.target.value })} /></Field>
+          <Field label="Parada de autobús 2"><input className={inputCls} placeholder="Ej: Plaza Mayor 09:45" value={f.bus2 ?? ""} onChange={e => setF({ ...f, bus2: e.target.value })} /></Field>
         </div>
 
         {(f.estado === "realizada") && (
@@ -652,9 +683,14 @@ export default function AdminEventos() {
   const saveFiesta = async (f: FiestaRow) => {
     setSaving(true);
     try {
-      const url   = f.id === 0 ? `${API}/fiestas` : `${API}/fiestas/${f.id}`;
+      const url    = f.id === 0 ? `${API}/fiestas` : `${API}/fiestas/${f.id}`;
       const method = f.id === 0 ? "POST" : "PUT";
       const r = await fetch(url, { method, headers: authHeaders(token), body: JSON.stringify(f) });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert("Error guardando: " + (err.error ?? r.statusText));
+        return;
+      }
       const saved: FiestaRow = await r.json();
       if (f.id === 0) setFiestas(prev => [saved, ...prev]);
       else setFiestas(prev => prev.map(x => x.id === saved.id ? saved : x));
@@ -673,9 +709,14 @@ export default function AdminEventos() {
     try {
       const subactividades = ex.subactividades?.filter(s => s.nombre) ?? [];
       const payload = { ...ex, subactividades };
-      const url   = ex.id === 0 ? `${API}/excursiones` : `${API}/excursiones/${ex.id}`;
+      const url    = ex.id === 0 ? `${API}/excursiones` : `${API}/excursiones/${ex.id}`;
       const method = ex.id === 0 ? "POST" : "PUT";
       const r = await fetch(url, { method, headers: authHeaders(token), body: JSON.stringify(payload) });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert("Error guardando: " + (err.error ?? r.statusText));
+        return;
+      }
       const saved: ExcursionRow = await r.json();
       if (ex.id === 0) setExcursiones(prev => [saved, ...prev]);
       else setExcursiones(prev => prev.map(x => x.id === saved.id ? saved : x));
@@ -692,9 +733,14 @@ export default function AdminEventos() {
   const saveViaje = async (v: ViajeRow) => {
     setSaving(true);
     try {
-      const url   = v.id === 0 ? `${API}/viajes` : `${API}/viajes/${v.id}`;
+      const url    = v.id === 0 ? `${API}/viajes` : `${API}/viajes/${v.id}`;
       const method = v.id === 0 ? "POST" : "PUT";
       const r = await fetch(url, { method, headers: authHeaders(token), body: JSON.stringify(v) });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert("Error guardando: " + (err.error ?? r.statusText));
+        return;
+      }
       const saved: ViajeRow = await r.json();
       if (v.id === 0) setViajes(prev => [saved, ...prev]);
       else setViajes(prev => prev.map(x => x.id === saved.id ? saved : x));
