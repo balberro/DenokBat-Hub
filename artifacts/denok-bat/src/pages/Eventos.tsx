@@ -1,18 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Bus, Utensils, Users, ChevronLeft, ArrowRight, Image, BookOpen } from "lucide-react";
+import { Calendar, MapPin, Bus, Utensils, Users, ChevronLeft, ArrowRight, BookOpen, Clock, Search, Loader2, Euro } from "lucide-react";
 import { Link } from "wouter";
 import { useStore } from "@/store/use-store";
 
 type Tab = "fiestas" | "excursiones" | "viajes";
 type SubTab = "proxima" | "previstas" | "realizadas" | "proximo" | "previstos" | "realizados";
-
-const FIESTAS = [
-  { id: 1, nombre: "Día de Santa Águeda", nombreEu: "Santa Ageda eguna", descripcion: "Celebración tradicional con coros y procesos de Santa Águeda por las calles del municipio.", descripcionEu: "Santa Ageda bezpera ospakizuna, abesbatzekin eta prozesioarekin herriko kaleetan.", fecha: "2026-02-04", lugar: "Casco histórico", precio: 0, estado: "proxima" },
-  { id: 2, nombre: "Fiesta de Primavera", nombreEu: "Udaberriko Jaia", descripcion: "Gran celebración anual con música en vivo, pintxos y actividades para toda la familia.", descripcionEu: "Urteko ospakizun nagusia, musika biziarekin, pintxoekin eta familia osoarentzako jarduerarekin.", fecha: "2026-04-19", lugar: "Plaza Mayor", precio: 5, estado: "prevista" },
-  { id: 3, nombre: "Almuerzo de Hermandad", nombreEu: "Anaiarteko Bazkaria", descripcion: "Encuentro anual de todos los socios con comida tradicional vasca.", descripcionEu: "Bazkide guztien urteko topaketa euskal janari tradizionalarekin.", fecha: "2026-06-20", lugar: "Restaurante Kaia", precio: 25, estado: "prevista" },
-];
 
 const EXCURSIONES = [
   {
@@ -91,33 +85,508 @@ const ESTADO_EXCURSION: Record<string, { label: string; color: string }> = {
   realizado: { label: "Realizado", color: "bg-muted text-muted-foreground" },
 };
 
-function FiestasTab({ lang, user }: { lang: string; user: any }) {
+type Fiesta = {
+  id: number;
+  nombre: string;
+  nombreEu: string | null;
+  descripcion: string | null;
+  descripcionEu: string | null;
+  fecha: string | null;
+  lugar: string | null;
+  fotoUrl: string | null;
+  programa: string | null;
+  memoria: string | null;
+  menu: string | null;
+  bus1: string | null;
+  bus2: string | null;
+  horaInicio: string | null;
+  horaFin: string | null;
+  precio: string | null;
+  plazasTotal: number | null;
+  plazasDisponibles: number | null;
+  estado: string | null;
+  publicado: boolean | null;
+};
+
+type FiestaSection = "proxima" | "previstas" | "realizadas";
+
+function formatFecha(fecha: string | null, _lang: string): string {
+  if (!fecha) return "—";
+  try {
+    return new Date(fecha + "T12:00:00").toLocaleDateString("es-ES", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric",
+    });
+  } catch {
+    return fecha;
+  }
+}
+
+function FiestaSectionNav({
+  lang,
+  active,
+  onChange,
+  counts,
+}: {
+  lang: string;
+  active: FiestaSection;
+  onChange: (s: FiestaSection) => void;
+  counts: { proxima: number; previstas: number; realizadas: number };
+}) {
+  const items: { key: FiestaSection; label: string; labelEu: string; color: string }[] = [
+    { key: "proxima",   label: "Próxima",   labelEu: "Hurrengoa",    color: "border-green-400 text-green-700 bg-green-50" },
+    { key: "previstas", label: "Previstas", labelEu: "Aurreikusiak", color: "border-blue-400 text-blue-700 bg-blue-50" },
+    { key: "realizadas",label: "Realizadas",labelEu: "Egindakoak",   color: "border-muted text-muted-foreground bg-muted/20" },
+  ];
   return (
-    <div className="space-y-5">
-      {FIESTAS.map((f) => (
-        <div key={f.id} className="bg-white rounded-2xl border border-border shadow-sm p-6 flex flex-col sm:flex-row gap-5">
-          <div className="w-24 h-24 rounded-2xl bg-secondary/10 flex flex-col items-center justify-center shrink-0">
-            <span className="text-3xl font-extrabold text-secondary leading-none">{new Date(f.fecha).getDate()}</span>
-            <span className="text-xs font-bold text-muted-foreground uppercase">
-              {new Date(f.fecha).toLocaleString(lang === "eu" ? "es-ES" : "es-ES", { month: "short" })}
+    <div className="grid grid-cols-3 gap-3 mb-8">
+      {items.map(item => (
+        <button
+          key={item.key}
+          onClick={() => onChange(item.key)}
+          className={`rounded-2xl border-2 p-4 text-center transition-all ${
+            active === item.key
+              ? item.color + " shadow-sm font-bold"
+              : "border-border bg-white text-muted-foreground hover:border-primary/30"
+          }`}
+        >
+          <p className="text-base font-bold">{lang === "eu" ? item.labelEu : item.label}</p>
+          {counts[item.key] > 0 && (
+            <p className="text-xs mt-0.5 opacity-70">{counts[item.key]} {lang === "eu" ? "fiesta" : "fiesta" + (counts[item.key] > 1 ? "s" : "")}</p>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: any }) {
+  const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
+  const descripcion = lang === "eu" ? (f.descripcionEu ?? f.descripcion) : f.descripcion;
+  const precio = parseFloat(f.precio ?? "0");
+
+  return (
+    <div className="bg-white rounded-3xl border border-primary/20 shadow-md overflow-hidden">
+      {f.fotoUrl ? (
+        <div className="h-64 sm:h-80 overflow-hidden relative">
+          <img src={f.fotoUrl} alt={nombre} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-6">
+            <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+              {lang === "eu" ? "Hurrengoa" : "Próxima"}
             </span>
-          </div>
-          <div className="flex-1">
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <h3 className="text-xl font-bold text-foreground">{lang === "eu" ? f.nombreEu : f.nombre}</h3>
-              <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-bold ${f.estado === "proxima" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                {f.estado === "proxima" ? (lang === "eu" ? "Hurrengoa" : "Próxima") : (lang === "eu" ? "Aurreikusita" : "Prevista")}
-              </span>
-            </div>
-            <p className="text-muted-foreground text-sm mb-3">{lang === "eu" ? f.descripcionEu : f.descripcion}</p>
-            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{f.lugar}</span>
-              {f.precio > 0 && <span className="flex items-center gap-1.5 font-semibold text-secondary">{f.precio}€</span>}
-            </div>
-            {user && <Button size="sm" className="mt-4">{lang === "eu" ? "Informazioa" : "Más información"}</Button>}
+            <h2 className="text-3xl font-extrabold text-white mt-2">{nombre}</h2>
           </div>
         </div>
-      ))}
+      ) : (
+        <div className="bg-gradient-to-br from-primary/10 via-secondary/5 to-background p-8 border-b border-border">
+          <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
+            {lang === "eu" ? "Hurrengoa" : "Próxima"}
+          </span>
+          <h2 className="text-3xl font-extrabold text-foreground mt-3">{nombre}</h2>
+        </div>
+      )}
+
+      <div className="p-6 sm:p-8">
+        {descripcion && (
+          <p className="text-muted-foreground mb-6 leading-relaxed">{descripcion}</p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+          {f.fecha && (
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Calendar className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
+                  {lang === "eu" ? "Data" : "Fecha"}
+                </p>
+                <p className="font-semibold text-foreground">{formatFecha(f.fecha, lang)}</p>
+              </div>
+            </div>
+          )}
+
+          {(f.horaInicio || f.horaFin) && (
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
+                  {lang === "eu" ? "Ordutegia" : "Horario"}
+                </p>
+                <p className="font-semibold text-foreground">
+                  {f.horaInicio ?? ""}{f.horaInicio && f.horaFin ? " – " : ""}{f.horaFin ?? ""}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {f.lugar && (
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <MapPin className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
+                  {lang === "eu" ? "Lekua" : "Lugar"}
+                </p>
+                <p className="font-semibold text-foreground">{f.lugar}</p>
+              </div>
+            </div>
+          )}
+
+          {precio > 0 && (
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0">
+                <Euro className="w-5 h-5 text-secondary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
+                  {lang === "eu" ? "Prezioa" : "Precio"}
+                </p>
+                <p className="text-2xl font-extrabold text-secondary">{precio}€</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {f.menu && (
+          <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-5 mb-5">
+            <div className="flex gap-3">
+              <Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-1">
+                  {lang === "eu" ? "Menua" : "Menú"}
+                </p>
+                <p className="text-foreground font-medium">{f.menu}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(f.bus1 || f.bus2) && (
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 mb-6">
+            <div className="flex gap-3">
+              <Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-2">
+                  {lang === "eu" ? "Autobus geltokiak" : "Paradas de autobús"}
+                </p>
+                <div className="space-y-1">
+                  {f.bus1 && <p className="font-medium text-foreground">📍 {f.bus1}</p>}
+                  {f.bus2 && <p className="font-medium text-foreground">📍 {f.bus2}</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {f.programa && (
+          <div className="bg-muted/30 rounded-2xl p-5 mb-6">
+            <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-2">
+              {lang === "eu" ? "Programa" : "Programa"}
+            </p>
+            <p className="text-foreground whitespace-pre-line leading-relaxed">{f.programa}</p>
+          </div>
+        )}
+
+        {f.plazasDisponibles !== null && f.plazasDisponibles > 0 && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-5">
+            <Users className="w-4 h-4 text-secondary" />
+            <span>{f.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas disponibles"}</span>
+          </div>
+        )}
+
+        <div className="flex gap-3 flex-wrap">
+          {user ? (
+            <Button size="lg" className="gap-2">
+              <Users className="w-4 h-4" />
+              {lang === "eu" ? "Izena eman" : "Inscribirme"}
+            </Button>
+          ) : (
+            <Link href="/login">
+              <Button size="lg" variant="outline" className="gap-2">
+                {lang === "eu" ? "Sartu izena emateko" : "Acceder para inscribirse"}
+              </Button>
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FiestaPrevistas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
+  if (fiestas.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        {lang === "eu" ? "Ez dago fiesta aurreikusita" : "No hay fiestas previstas por el momento"}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {fiestas.map(f => {
+        const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
+        const descripcion = lang === "eu" ? (f.descripcionEu ?? f.descripcion) : f.descripcion;
+        const precio = parseFloat(f.precio ?? "0");
+        return (
+          <div key={f.id} className="bg-white rounded-2xl border border-border shadow-sm p-5 sm:p-6 flex gap-5">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex flex-col items-center justify-center shrink-0">
+              {f.fecha ? (
+                <>
+                  <span className="text-xl font-extrabold text-blue-700 leading-none">
+                    {new Date(f.fecha + "T12:00:00").getDate()}
+                  </span>
+                  <span className="text-xs font-bold text-blue-500 uppercase">
+                    {new Date(f.fecha + "T12:00:00").toLocaleDateString("es-ES", { month: "short" })}
+                  </span>
+                </>
+              ) : (
+                <Calendar className="w-6 h-6 text-blue-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-foreground text-lg mb-1">{nombre}</h3>
+              {descripcion && (
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{descripcion}</p>
+              )}
+              <div className="flex flex-wrap gap-3 text-sm">
+                {f.lugar && (
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <MapPin className="w-3.5 h-3.5 text-primary" />{f.lugar}
+                  </span>
+                )}
+                {(f.horaInicio) && (
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Clock className="w-3.5 h-3.5 text-primary" />{f.horaInicio}{f.horaFin ? ` – ${f.horaFin}` : ""}
+                  </span>
+                )}
+                {precio > 0 && (
+                  <span className="font-bold text-secondary">{precio}€</span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
+  const [searchName, setSearchName] = useState("");
+  const [searchDate, setSearchDate] = useState("");
+
+  if (fiestas.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        {lang === "eu" ? "Ez dago oraindik fiesta eginik" : "Aún no hay fiestas realizadas"}
+      </div>
+    );
+  }
+
+  // Latest realized fiesta (first in list, since ordered by date desc)
+  const latest = fiestas[0];
+  const rest = fiestas.slice(1);
+
+  // Filter the index
+  const filtered = rest.filter(f => {
+    const nombre = (lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre) ?? "";
+    const matchName = searchName === "" || nombre.toLowerCase().includes(searchName.toLowerCase());
+    const matchDate = searchDate === "" || (f.fecha ?? "").startsWith(searchDate);
+    return matchName && matchDate;
+  });
+
+  const latestNombre = lang === "eu" ? (latest.nombreEu ?? latest.nombre) : latest.nombre;
+  const latestDescripcion = lang === "eu" ? (latest.descripcionEu ?? latest.descripcion) : latest.descripcion;
+
+  return (
+    <div className="space-y-8">
+      {/* Latest realized with memory */}
+      <div className="bg-white rounded-3xl border border-border shadow-md overflow-hidden">
+        {latest.fotoUrl && (
+          <div className="h-56 overflow-hidden relative">
+            <img src={latest.fotoUrl} alt={latestNombre} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-5">
+              <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full">
+                {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="p-6 sm:p-8">
+          {!latest.fotoUrl && (
+            <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full inline-block mb-4">
+              {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
+            </span>
+          )}
+          <h3 className="text-2xl font-extrabold text-foreground mb-1">{latestNombre}</h3>
+          <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-4">
+            {latest.fecha && (
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-primary" />
+                {formatFecha(latest.fecha, lang)}
+              </span>
+            )}
+            {latest.lugar && (
+              <span className="flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-primary" />{latest.lugar}
+              </span>
+            )}
+          </div>
+          {latestDescripcion && (
+            <p className="text-muted-foreground mb-4 leading-relaxed">{latestDescripcion}</p>
+          )}
+          {latest.memoria && (
+            <div className="bg-muted/30 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <BookOpen className="w-4 h-4 text-primary" />
+                <p className="font-bold text-sm text-foreground">{lang === "eu" ? "Memoria" : "Memoria de la fiesta"}</p>
+              </div>
+              <p className="text-muted-foreground leading-relaxed">{latest.memoria}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Searchable index of previous ones */}
+      {rest.length > 0 && (
+        <div>
+          <h3 className="text-lg font-bold text-foreground mb-4">
+            {lang === "eu" ? "Aurreko festak" : "Fiestas anteriores"}
+          </h3>
+
+          <div className="flex flex-col sm:flex-row gap-3 mb-5">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder={lang === "eu" ? "Izena bilatu…" : "Buscar por nombre…"}
+                value={searchName}
+                onChange={e => setSearchName(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 text-sm border border-border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="month"
+                value={searchDate}
+                onChange={e => setSearchDate(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 text-sm border border-border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            {(searchName || searchDate) && (
+              <button
+                onClick={() => { setSearchName(""); setSearchDate(""); }}
+                className="text-sm text-muted-foreground hover:text-foreground underline"
+              >
+                {lang === "eu" ? "Garbitu" : "Limpiar"}
+              </button>
+            )}
+          </div>
+
+          {filtered.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground text-sm">
+              {lang === "eu" ? "Ez da emaitzarik aurkitu" : "No hay resultados para esa búsqueda"}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map(f => {
+                const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
+                return (
+                  <div key={f.id} className="bg-white rounded-xl border border-border px-5 py-4 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-muted/30 flex flex-col items-center justify-center shrink-0">
+                      {f.fecha && (
+                        <>
+                          <span className="text-sm font-extrabold text-muted-foreground leading-none">
+                            {new Date(f.fecha + "T12:00:00").getDate()}
+                          </span>
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                            {new Date(f.fecha + "T12:00:00").toLocaleDateString("es-ES", { month: "short" })}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground">{nombre}</p>
+                      <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+                        {f.fecha && (
+                          <span>{new Date(f.fecha + "T12:00:00").toLocaleDateString("es-ES", { year: "numeric", month: "long" })}</span>
+                        )}
+                        {f.lugar && <span>· {f.lugar}</span>}
+                      </div>
+                    </div>
+                    {f.memoria && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                        <BookOpen className="w-3.5 h-3.5" />
+                        {lang === "eu" ? "Memoria" : "Memoria"}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FiestasTab({ lang, user }: { lang: string; user: any }) {
+  const [section, setSection] = useState<FiestaSection>("proxima");
+  const [fiestas, setFiestas] = useState<Fiesta[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchFiestas = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/fiestas");
+      const data = await res.json();
+      setFiestas(data.items ?? []);
+    } catch {
+      setFiestas([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchFiestas(); }, [fetchFiestas]);
+
+  const proxima = fiestas.find(f => f.estado === "proxima") ?? null;
+  const previstas = fiestas.filter(f => f.estado === "prevista");
+  const realizadas = fiestas.filter(f => f.estado === "realizada");
+
+  const counts = { proxima: proxima ? 1 : 0, previstas: previstas.length, realizadas: realizadas.length };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <FiestaSectionNav lang={lang} active={section} onChange={setSection} counts={counts} />
+
+      {section === "proxima" && (
+        proxima ? (
+          <FiestaCardProxima f={proxima} lang={lang} user={user} />
+        ) : (
+          <div className="text-center py-16 text-muted-foreground bg-white rounded-2xl border border-border">
+            {lang === "eu" ? "Ez dago fiesta hurrengoa konfiguratuta" : "No hay próxima fiesta configurada"}
+          </div>
+        )
+      )}
+
+      {section === "previstas" && <FiestaPrevistas fiestas={previstas} lang={lang} />}
+      {section === "realizadas" && <FiestaRealizadas fiestas={realizadas} lang={lang} />}
     </div>
   );
 }

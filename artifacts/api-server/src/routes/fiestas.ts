@@ -6,7 +6,13 @@ import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-// GET /fiestas — lista todas las fiestas
+const ALL_FIELDS = [
+  "nombre","nombreEu","descripcion","descripcionEu","fecha","lugar","fotoUrl",
+  "programa","memoria","menu","bus1","bus2","horaInicio","horaFin","precio",
+  "plazasTotal","plazasDisponibles","estado","publicado",
+];
+
+// GET /fiestas — lista todas las fiestas públicas (solo publicadas)
 router.get("/fiestas", async (req, res): Promise<void> => {
   try {
     const rows = await db.select().from(fiestasTable).orderBy(desc(fiestasTable.fecha));
@@ -35,19 +41,25 @@ router.post("/fiestas", requireAuth, async (req, res): Promise<void> => {
   if (!body.nombre) { res.status(400).json({ error: "'nombre' es obligatorio" }); return; }
   try {
     const [inserted] = await db.insert(fiestasTable).values({
-      nombre:        body.nombre,
-      nombreEu:      body.nombreEu      ?? null,
-      descripcion:   body.descripcion   ?? null,
-      descripcionEu: body.descripcionEu ?? null,
-      fecha:         body.fecha         ?? null,
-      lugar:         body.lugar         ?? null,
-      fotoUrl:       body.fotoUrl       ?? null,
-      programa:      body.programa      ?? null,
-      memoria:       body.memoria       ?? null,
-      plazasTotal:       body.plazasTotal       ?? 0,
+      nombre:            body.nombre,
+      nombreEu:          body.nombreEu      ?? null,
+      descripcion:       body.descripcion   ?? null,
+      descripcionEu:     body.descripcionEu ?? null,
+      fecha:             body.fecha         ?? null,
+      lugar:             body.lugar         ?? null,
+      fotoUrl:           body.fotoUrl       ?? null,
+      programa:          body.programa      ?? null,
+      memoria:           body.memoria       ?? null,
+      menu:              body.menu          ?? null,
+      bus1:              body.bus1          ?? null,
+      bus2:              body.bus2          ?? null,
+      horaInicio:        body.horaInicio    ?? null,
+      horaFin:           body.horaFin       ?? null,
+      precio:            body.precio        ?? "0",
+      plazasTotal:       body.plazasTotal   ?? 0,
       plazasDisponibles: body.plazasDisponibles ?? 0,
-      estado:        body.estado        ?? "proxima",
-      publicado:     body.publicado     ?? false,
+      estado:            body.estado        ?? "proxima",
+      publicado:         body.publicado     ?? false,
     }).returning();
     res.status(201).json(inserted);
   } catch (err) {
@@ -62,10 +74,7 @@ router.put("/fiestas/:id", requireAuth, async (req, res): Promise<void> => {
   const body = req.body ?? {};
   try {
     const fields: Record<string, unknown> = { updatedAt: new Date() };
-    const pick = (k: string) => { if (body[k] !== undefined) fields[k] = body[k] ?? null; };
-    ["nombre","nombreEu","descripcion","descripcionEu","fecha","lugar","fotoUrl",
-     "programa","memoria","plazasTotal","plazasDisponibles","estado","publicado"].forEach(pick);
-
+    ALL_FIELDS.forEach(k => { if (body[k] !== undefined) fields[k] = body[k] ?? null; });
     await db.update(fiestasTable).set(fields).where(eq(fiestasTable.id, id));
     const [updated] = await db.select().from(fiestasTable).where(eq(fiestasTable.id, id)).limit(1);
     res.json(updated);
