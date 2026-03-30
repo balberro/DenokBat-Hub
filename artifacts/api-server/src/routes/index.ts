@@ -15,6 +15,7 @@ import sugerenciasRouter from "./sugerencias";
 import pagosRouter from "./pagos";
 import syncRouter from "./sync";
 import configRouter from "./config";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(sugerenciasRouter);
 router.use(pagosRouter);
 router.use(syncRouter);
 router.use(configRouter);
+router.use(adminRouter);
 
 export default router;

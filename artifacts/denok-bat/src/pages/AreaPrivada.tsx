@@ -15,6 +15,7 @@ import AdminActividades from "./area/AdminActividades";
 import GestionSocios from "./area/GestionSocios";
 import AdminRoles from "./area/AdminRoles";
 import AdminTextos from "./area/AdminTextos";
+import AdminDB from "./area/AdminDB";
 import SeccionContable from "./area/SeccionContable";
 import SeccionAdmin from "./area/SeccionAdmin";
 
@@ -38,6 +39,7 @@ const allowedRoles: Record<string, string[]> = {
   "/admin/proveedores":   ["administrador"],
   "/admin/odoo":          ["administrador"],
   "/admin/app":           ["administrador"],
+  "/admin/database":      ["administrador"],
 };
 
 const components: Record<string, React.ComponentType> = {
@@ -60,6 +62,7 @@ const components: Record<string, React.ComponentType> = {
   "/admin/proveedores":   SeccionAdmin,
   "/admin/odoo":          SeccionAdmin,
   "/admin/app":           SeccionAdmin,
+  "/admin/database":      AdminDB,
 };
 
 export default function AreaPrivada() {

@@ -48,6 +48,7 @@ const roleItems: Record<string, LinkItem[]> = {
     { href: "/admin/textos",        label: "menu.textos" },
     { href: "/admin/odoo",          label: "menu.odoo" },
     { href: "/admin/app",           label: "menu.app" },
+    { href: "/admin/database",      label: "menu.database" },
   ],
 };
 

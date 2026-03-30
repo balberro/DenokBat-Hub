@@ -42,6 +42,7 @@ export const baseDictionary: Translations = {
   'menu.textos': { es: 'Textos / Traducciones', eu: 'Testuak / Itzulpenak' },
   'menu.odoo': { es: 'Odoo', eu: 'Odoo' },
   'menu.app': { es: 'App', eu: 'App' },
+  'menu.database': { es: 'Base de datos', eu: 'Datu-basea' },
 
   // Common UI
   'common.read_more': { es: 'Leer más', eu: 'Gehiago irakurri' },

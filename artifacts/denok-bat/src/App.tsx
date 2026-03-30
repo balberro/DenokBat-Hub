@@ -60,6 +60,7 @@ function Router() {
       <Route path="/admin/proveedores" component={AreaPrivada} />
       <Route path="/admin/odoo" component={AreaPrivada} />
       <Route path="/admin/app" component={AreaPrivada} />
+      <Route path="/admin/database" component={AreaPrivada} />
 
       <Route component={NotFound} />
     </Switch>
