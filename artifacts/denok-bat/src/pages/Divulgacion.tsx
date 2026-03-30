@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
-import { Download, Plus, Search, Calendar, FileText, Newspaper, BookOpen, Image, ChevronDown } from "lucide-react";
+import { Download, Plus, Search, Calendar, FileText, Newspaper, BookOpen, ImageIcon, ChevronDown } from "lucide-react";
 import { useStore } from "@/store/use-store";
 
 type Tab = "hoja" | "pulunpe" | "noticias" | "articulos" | "galeria";
@@ -269,12 +269,12 @@ export default function Divulgacion() {
   const [tab, setTab] = useState<Tab>("hoja");
   const canCreate = user?.role === "directivo" || user?.role === "administrador";
 
-  const TABS: { key: Tab; label: string; labelEu: string; icon: React.ReactNode }[] = [
+  const TABS: { key: Tab; label: string; labelEu: string; icon: ReactNode }[] = [
     { key: "hoja", label: "Hoja Informativa", labelEu: "Informazio Orria", icon: <Newspaper className="w-4 h-4" /> },
     { key: "pulunpe", label: "Pulunpe", labelEu: "Pulunpe", icon: <FileText className="w-4 h-4" /> },
     { key: "noticias", label: "Noticias", labelEu: "Berriak", icon: <Newspaper className="w-4 h-4" /> },
     { key: "articulos", label: "Artículos", labelEu: "Artikuluak", icon: <BookOpen className="w-4 h-4" /> },
-    { key: "galeria", label: "Galería", labelEu: "Galeria", icon: <Image className="w-4 h-4" /> },
+    { key: "galeria", label: "Galería", labelEu: "Galeria", icon: <ImageIcon className="w-4 h-4" /> },
   ];
 
   return (

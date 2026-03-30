@@ -32,7 +32,7 @@ export default function Services() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {servicios.map((srv) => {
-            const Icon = srv.icono ? ICON_MAP[srv.icono] : HeartPulse;
+            const Icon = (srv.icono && ICON_MAP[srv.icono]) || HeartPulse;
             return (
               <div key={srv.id} className="bg-white p-8 rounded-3xl border border-border shadow-sm hover:shadow-xl transition-all text-center">
                 <div className="w-20 h-20 bg-accent rounded-full flex items-center justify-center mx-auto mb-6">

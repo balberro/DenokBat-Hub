@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { FileText, Download, Users, GitBranch } from "lucide-react";
@@ -260,7 +260,7 @@ export default function QuienesSomos() {
   const { lang } = useTranslation();
   const [tab, setTab] = useState<Tab>("presentacion");
 
-  const TABS: { key: Tab; label: string; labelEu: string; icon: React.ReactNode }[] = [
+  const TABS: { key: Tab; label: string; labelEu: string; icon: ReactNode }[] = [
     { key: "presentacion", label: "Presentación", labelEu: "Aurkezpena", icon: <Users className="w-4 h-4" /> },
     { key: "estatutos", label: "Estatutos", labelEu: "Estatutuak", icon: <FileText className="w-4 h-4" /> },
     { key: "organigrama", label: "Organigrama", labelEu: "Organigrama", icon: <GitBranch className="w-4 h-4" /> },
