@@ -91,6 +91,34 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   });
 });
 
+// ── Dev login (solo disponible fuera de producción) ──────────────────────────
+// Genera un JWT real con el usuario de demostración para desarrollo/pruebas.
+if (process.env.NODE_ENV !== "production") {
+  router.post("/auth/dev-login", (req, res): void => {
+    const { username } = req.body ?? {};
+    const token = signToken({
+      uid: 1,
+      username: String(username ?? "admin"),
+      name: "María García",
+      email: "admin@denokbat.eus",
+      role: "administrador",
+      groupId: null,
+    });
+    res.json({
+      token,
+      user: {
+        id: 1,
+        name: "María García",
+        email: "admin@denokbat.eus",
+        role: "administrador",
+        roles: ["socio", "delegado", "directivo", "contable", "administrador"],
+        avatar: null,
+        groupId: null,
+      },
+    });
+  });
+}
+
 router.get("/auth/me", requireAuth, (req, res): void => {
   const user = req.user!;
   res.json({

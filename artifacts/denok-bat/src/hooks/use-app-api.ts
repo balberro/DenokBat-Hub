@@ -64,8 +64,22 @@ export function useAppLogin() {
   const [isError, setIsError] = useState(false);
   const abortedRef = useRef(false);
   
-  const loginMock = async (_data: any) => {
-    await new Promise(r => setTimeout(r, 800));
+  const loginMock = async (data: any) => {
+    try {
+      const r = await fetch('/api/auth/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: data?.username ?? 'admin' }),
+      });
+      if (r.ok) {
+        const result = await r.json();
+        setUser(result.user);
+        setToken(result.token);
+        return result;
+      }
+    } catch { /* fallback below */ }
+    // Ultimate fallback (offline / unavailable)
+    await new Promise(r => setTimeout(r, 500));
     setUser(mockUser);
     setToken('mock-token');
     return { token: 'mock-token', user: mockUser };
