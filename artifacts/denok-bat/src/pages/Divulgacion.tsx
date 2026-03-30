@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { Download, Plus, Search, Calendar, FileText, Newspaper, BookOpen, ImageIcon, ChevronDown } from "lucide-react";
-import { useStore } from "@/store/use-store";
+import { useStore, getUserRoles } from "@/store/use-store";
 
 type Tab = "hoja" | "pulunpe" | "noticias" | "articulos" | "galeria";
 
@@ -267,7 +267,7 @@ export default function Divulgacion() {
   const { lang } = useTranslation();
   const user = useStore(s => s.user);
   const [tab, setTab] = useState<Tab>("hoja");
-  const canCreate = user?.role === "directivo" || user?.role === "administrador";
+  const canCreate = user ? getUserRoles(user).some(r => r === "directivo" || r === "administrador") : false;
 
   const TABS: { key: Tab; label: string; labelEu: string; icon: ReactNode }[] = [
     { key: "hoja", label: "Hoja Informativa", labelEu: "Informazio Orria", icon: <Newspaper className="w-4 h-4" /> },

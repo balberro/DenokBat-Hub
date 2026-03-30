@@ -1,4 +1,4 @@
-import { useStore } from "@/store/use-store";
+import { useStore, getUserRoles } from "@/store/use-store";
 import { useTranslation } from "@/i18n/translations";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -79,7 +79,7 @@ export default function AreaPrivada() {
   }
 
   const roles = allowedRoles[location];
-  if (roles && !roles.includes(user.role)) {
+  if (roles && !getUserRoles(user).some(r => roles.includes(r))) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 gap-4">
         <p className="text-2xl font-bold text-foreground">Acceso restringido</p>

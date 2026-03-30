@@ -26,9 +26,10 @@ export const mockServicios: Servicio[] = [
   { id: 3, nombre: 'Peluquería', nombreEu: 'Ileapaindegia', descripcion: 'Precios reducidos para socios.', descripcionEu: 'Prezio murriztuak bazkideentzat.', icono: 'Scissors' },
 ];
 
-export const mockUser: UserProfile = {
+export const mockUser: UserProfile & { roles?: string[] } = {
   id: 1,
   name: 'María García',
   email: 'maria@example.com',
   role: 'administrador',
+  roles: ['socio', 'delegado', 'administrador'],
 };

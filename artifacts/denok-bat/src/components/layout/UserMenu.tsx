@@ -2,58 +2,70 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { ChevronDown, User as UserIcon, LogOut } from "lucide-react";
 import { useTranslation } from "@/i18n/translations";
-import { useStore } from "@/store/use-store";
-import type { UserProfile } from "@workspace/api-client-react";
+import { useStore, getUserRoles, type AppUser } from "@/store/use-store";
 
-type MenuItem = { href: string; label: string } | { action: "logout"; label: string };
+type LinkItem = { href: string; label: string };
+type ActionItem = { action: "logout"; label: string };
+type MenuItem = LinkItem | ActionItem;
 
-const roleMenus: Record<string, MenuItem[]> = {
+const ROLE_LABELS: Record<string, { es: string; eu: string }> = {
+  socio:         { es: "Socio/a",       eu: "Bazkidea" },
+  delegado:      { es: "Delegado/a",    eu: "Ordezkaria" },
+  directivo:     { es: "Directivo/a",   eu: "Zuzendaritza" },
+  contable:      { es: "Contable",      eu: "Kontularia" },
+  administrador: { es: "Administrador/a", eu: "Administratzailea" },
+  usuario:       { es: "Usuario/a",     eu: "Erabiltzailea" },
+};
+
+const roleItems: Record<string, LinkItem[]> = {
   usuario: [
     { href: "/perfil", label: "menu.perfil" },
-    { action: "logout", label: "nav.logout" },
   ],
   socio: [
-    { href: "/mis-eventos", label: "menu.mis_eventos" },
-    { href: "/mis-inscripciones", label: "menu.mis_inscripciones" },
-    { href: "/mis-pagos", label: "menu.mis_pagos" },
-    { href: "/mis-sugerencias", label: "menu.mis_sugerencias" },
-    { href: "/perfil", label: "menu.perfil" },
-    { action: "logout", label: "nav.logout" },
+    { href: "/mis-eventos",         label: "menu.mis_eventos" },
+    { href: "/mis-inscripciones",   label: "menu.mis_inscripciones" },
+    { href: "/mis-pagos",           label: "menu.mis_pagos" },
+    { href: "/mis-sugerencias",     label: "menu.mis_sugerencias" },
   ],
   delegado: [
-    { href: "/mi-grupo", label: "menu.mi_grupo" },
+    { href: "/mi-grupo",            label: "menu.mi_grupo" },
     { href: "/inscripciones-grupo", label: "menu.inscripciones_grupo" },
-    { href: "/perfil", label: "menu.perfil" },
-    { action: "logout", label: "nav.logout" },
   ],
   directivo: [
-    { href: "/admin/eventos", label: "menu.admin_eventos" },
-    { href: "/admin/actividades", label: "menu.admin_actividades" },
-    { href: "/perfil", label: "menu.perfil" },
-    { action: "logout", label: "nav.logout" },
+    { href: "/admin/eventos",       label: "menu.admin_eventos" },
+    { href: "/admin/actividades",   label: "menu.admin_actividades" },
   ],
   contable: [
-    { href: "/admin/socios", label: "menu.gestion_socios" },
-    { href: "/admin/contabilidad", label: "menu.gestion_contable" },
-    { href: "/admin/subvenciones", label: "menu.subvenciones" },
-    { href: "/admin/divulgacion", label: "menu.divulgacion_admin" },
+    { href: "/admin/socios",        label: "menu.gestion_socios" },
+    { href: "/admin/contabilidad",  label: "menu.gestion_contable" },
+    { href: "/admin/subvenciones",  label: "menu.subvenciones" },
+    { href: "/admin/divulgacion",   label: "menu.divulgacion_admin" },
     { href: "/admin/documentacion", label: "menu.documentacion" },
-    { href: "/perfil", label: "menu.perfil" },
-    { action: "logout", label: "nav.logout" },
   ],
   administrador: [
-    { href: "/admin/roles", label: "menu.roles" },
-    { href: "/admin/proveedores", label: "menu.proveedores" },
-    { href: "/admin/textos", label: "menu.textos" },
-    { href: "/admin/odoo", label: "menu.odoo" },
-    { href: "/admin/app", label: "menu.app" },
-    { href: "/perfil", label: "menu.perfil" },
-    { action: "logout", label: "nav.logout" },
+    { href: "/admin/roles",         label: "menu.roles" },
+    { href: "/admin/proveedores",   label: "menu.proveedores" },
+    { href: "/admin/textos",        label: "menu.textos" },
+    { href: "/admin/odoo",          label: "menu.odoo" },
+    { href: "/admin/app",           label: "menu.app" },
   ],
 };
 
+function buildMenuSections(user: AppUser): { role: string; items: LinkItem[] }[] {
+  const roles = getUserRoles(user);
+  const seenHrefs = new Set<string>();
+  return roles.map(role => {
+    const items = (roleItems[role] ?? roleItems["usuario"]).filter(item => {
+      if (seenHrefs.has(item.href)) return false;
+      seenHrefs.add(item.href);
+      return true;
+    });
+    return { role, items };
+  }).filter(s => s.items.length > 0);
+}
+
 interface UserMenuProps {
-  user: UserProfile;
+  user: AppUser;
   onClose?: () => void;
   mobile?: boolean;
 }
@@ -61,12 +73,16 @@ interface UserMenuProps {
 export function UserMenu({ user, onClose, mobile = false }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const [, setLocation] = useLocation();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const setUser = useStore((s) => s.setUser);
   const setToken = useStore((s) => s.setToken);
   const ref = useRef<HTMLDivElement>(null);
 
-  const items = roleMenus[user.role] ?? roleMenus["usuario"];
+  const sections = buildMenuSections(user);
+  const allRoles = getUserRoles(user);
+  const rolesLabel = allRoles
+    .map(r => ROLE_LABELS[r]?.[lang] ?? r)
+    .join(" · ");
 
   const handleLogout = () => {
     setUser(null);
@@ -88,6 +104,49 @@ export function UserMenu({ user, onClose, mobile = false }: UserMenuProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [mobile]);
 
+  function renderItems(compact = false) {
+    return (
+      <>
+        {sections.map(({ role, items }) => (
+          <div key={role}>
+            {sections.length > 1 && (
+              <p className={`px-4 ${compact ? "py-1.5 text-[10px]" : "py-2 text-xs"} font-bold text-muted-foreground uppercase tracking-wider`}>
+                {ROLE_LABELS[role]?.[lang] ?? role}
+              </p>
+            )}
+            {items.map(item => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => { setOpen(false); onClose?.(); }}
+                className={`block px-4 ${compact ? "py-2 text-sm" : "py-3 text-base"} font-medium text-foreground hover:bg-muted transition-colors ${compact ? "rounded" : "rounded-xl"}`}
+              >
+                {t(item.label)}
+              </Link>
+            ))}
+          </div>
+        ))}
+
+        <div className={`${sections.length > 0 ? "border-t border-border/50 mt-1 pt-1" : ""}`}>
+          <Link
+            href="/perfil"
+            onClick={() => { setOpen(false); onClose?.(); }}
+            className={`block px-4 ${compact ? "py-2 text-sm" : "py-3 text-base"} font-medium text-foreground hover:bg-muted transition-colors ${compact ? "rounded" : "rounded-xl"}`}
+          >
+            {t("menu.perfil")}
+          </Link>
+          <button
+            onClick={handleLogout}
+            className={`flex items-center gap-2 w-full px-4 ${compact ? "py-2 text-sm" : "py-3 text-base"} font-medium text-red-600 hover:bg-red-50 transition-colors ${compact ? "rounded" : "rounded-xl"}`}
+          >
+            <LogOut className="w-4 h-4" />
+            {t("nav.logout")}
+          </button>
+        </div>
+      </>
+    );
+  }
+
   if (mobile) {
     return (
       <div className="pt-4 mt-4 border-t border-border space-y-1">
@@ -95,32 +154,12 @@ export function UserMenu({ user, onClose, mobile = false }: UserMenuProps) {
           <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
             <UserIcon className="w-5 h-5 text-primary" />
           </div>
-          <div>
-            <p className="font-semibold text-foreground text-base leading-tight">{user.name}</p>
-            <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
+          <div className="min-w-0">
+            <p className="font-semibold text-foreground text-base leading-tight truncate">{user.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{rolesLabel}</p>
           </div>
         </div>
-        {items.map((item, i) =>
-          "action" in item ? (
-            <button
-              key={i}
-              onClick={handleLogout}
-              className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-base font-medium text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              {t(item.label)}
-            </button>
-          ) : (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => { setOpen(false); onClose?.(); }}
-              className="block px-4 py-3 rounded-xl text-base font-medium text-muted-foreground hover:bg-muted transition-colors"
-            >
-              {t(item.label)}
-            </Link>
-          )
-        )}
+        {renderItems(false)}
       </div>
     );
   }
@@ -139,32 +178,12 @@ export function UserMenu({ user, onClose, mobile = false }: UserMenuProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-xl border border-border/60 py-2 z-50">
+        <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-xl border border-border/60 py-2 z-50 max-h-[80vh] overflow-y-auto">
           <div className="px-4 py-3 border-b border-border/40 mb-1">
             <p className="font-semibold text-foreground text-sm leading-tight">{user.name}</p>
-            <p className="text-xs text-muted-foreground capitalize mt-0.5">{user.role}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{rolesLabel}</p>
           </div>
-          {items.map((item, i) =>
-            "action" in item ? (
-              <button
-                key={i}
-                onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                {t(item.label)}
-              </button>
-            ) : (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className="block px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
-              >
-                {t(item.label)}
-              </Link>
-            )
-          )}
+          {renderItems(true)}
         </div>
       )}
     </div>

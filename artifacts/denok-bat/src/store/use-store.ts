@@ -4,11 +4,15 @@ import type { UserProfile } from '@workspace/api-client-react';
 
 export type Language = 'es' | 'eu';
 
+export type AppUser = UserProfile & {
+  roles?: string[];
+};
+
 interface AppState {
   lang: Language;
   setLang: (lang: Language) => void;
-  user: UserProfile | null;
-  setUser: (user: UserProfile | null) => void;
+  user: AppUser | null;
+  setUser: (user: AppUser | null) => void;
   token: string | null;
   setToken: (token: string | null) => void;
   isDemoMode: boolean;
@@ -32,3 +36,14 @@ export const useStore = create<AppState>()(
     }
   )
 );
+
+export function getUserRoles(user: AppUser): string[] {
+  if (user.roles && user.roles.length > 0) return user.roles;
+  return [user.role];
+}
+
+export function userHasRole(user: AppUser, role: string | string[]): boolean {
+  const userRoles = getUserRoles(user);
+  if (Array.isArray(role)) return role.some(r => userRoles.includes(r));
+  return userRoles.includes(role);
+}

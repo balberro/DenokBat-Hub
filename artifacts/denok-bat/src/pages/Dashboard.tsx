@@ -1,5 +1,5 @@
 import { useTranslation } from "@/i18n/translations";
-import { useStore } from "@/store/use-store";
+import { useStore, getUserRoles } from "@/store/use-store";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,9 +34,13 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-4xl font-bold mb-1">¡Hola, {user.name}!</h1>
-              <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-sm font-semibold capitalize tracking-wide">
-                Rol: {user.role}
-              </span>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {getUserRoles(user).map(role => (
+                  <span key={role} className="inline-block bg-white/20 px-3 py-1 rounded-full text-sm font-semibold capitalize tracking-wide">
+                    {role}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
           <Button variant="outline" className="bg-white/10 text-white border-white/20 hover:bg-white/20 h-12" onClick={handleLogout}>
@@ -75,7 +79,7 @@ export default function Dashboard() {
         </div>
 
         {/* Role specific content mock */}
-        {user.role === 'directivo' && (
+        {getUserRoles(user).includes('directivo') && (
           <div className="mt-12 bg-accent/30 p-8 rounded-3xl border border-accent">
             <h3 className="text-2xl font-bold mb-4 text-accent-foreground">Panel Directivo</h3>
             <p className="text-lg">Opciones de gestión de asociación (mockup).</p>
