@@ -30,5 +30,5 @@ export const mockUser: UserProfile = {
   id: 1,
   name: 'María García',
   email: 'maria@example.com',
-  role: 'socio',
+  role: 'administrador',
 };
