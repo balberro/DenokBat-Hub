@@ -15,7 +15,7 @@ export function Navbar() {
   const allNavLinks = [
     { href: "/", label: 'nav.home' },
     { href: "/quienes-somos", label: 'nav.about' },
-    { href: "/actividades", label: 'nav.activities' },
+    { href: "/actividades", label: 'nav.active_aging' },
     { href: "/eventos", label: 'nav.events' },
     { href: "/divulgacion", label: 'nav.news' },
     { href: "/servicios", label: 'nav.services' },

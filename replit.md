@@ -4,6 +4,24 @@
 
 App web para la Asociación de Jubilados Denok Bat (País Vasco). Bilingüe (Euskara / Español). Integración con Odoo 17 via XML-RPC. Arquitectura headless: base de datos local PostgreSQL sincronizada con Odoo.
 
+## Secciones principales (estructura actualizada)
+
+| Ruta | Sección | Sub-secciones |
+|------|---------|---------------|
+| `/actividades` | **Zahartze Aktiboa / Envejecimiento Activo** | Yoga · Gimnasia · TaiChi · Montañismo · Mus (cada una con estado: prevista/abierta/en_curso/terminada) |
+| `/eventos` | **Ekitaldiak / Eventos** | Fiestas (🎉) · Excursiones (🚌 próxima/previstas/realizadas) · Viajes (✈️ próximo/previstos/realizados) |
+| `/divulgacion` | **Dibulgazioa / Divulgación** | Hoja Informativa · Pulunpe · Noticias · Artículos · Galería |
+| `/quienes-somos` | **Nor Gara / Nosotros** | Presentación · Estatutos · Organigrama · Galería |
+
+## Roles de usuario
+
+- `socio` — acceso básico, inscripción actividades
+- `delegado` — gestión grupo
+- `directivo` — crear/editar contenido (Divulgación, Eventos, Actividades)
+- `contable` — gestión contabilidad
+- `administrador` — acceso total, panel de administración Odoo sync
+- `superadmin` — acceso total más gestión de roles
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
