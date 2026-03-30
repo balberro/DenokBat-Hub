@@ -12,7 +12,7 @@ import {
 } from '@workspace/api-client-react';
 import { mockActividades, mockEventos, mockNoticias, mockServicios, mockUser } from './use-mock-data';
 import { useStore } from '@/store/use-store';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Wrap Actividades
 export function useAppActividades() {
@@ -58,27 +58,59 @@ export function useAppLogin() {
   const mutation = useLogin();
   const setUser = useStore(s => s.setUser);
   const setToken = useStore(s => s.setToken);
+
+  // Custom state so we never flash an error when the mock fallback succeeds
+  const [isPending, setIsPending] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const abortedRef = useRef(false);
   
   const loginMock = async (_data: any) => {
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 800));
     setUser(mockUser);
     setToken('mock-token');
     return { token: 'mock-token', user: mockUser };
   };
 
+  const mutate = (vars: any, options?: any) => {
+    setIsPending(true);
+    setIsError(false);
+    abortedRef.current = false;
+
+    mutation.mutate(vars, {
+      onSuccess: (data) => {
+        if (abortedRef.current) return;
+        setUser(data.user);
+        if (data.token) setToken(data.token);
+        setIsPending(false);
+        options?.onSuccess?.(data);
+      },
+      onError: () => {
+        // API failed — silently fall back to mock login
+        loginMock(vars.data)
+          .then(data => {
+            if (abortedRef.current) return;
+            setIsPending(false);
+            options?.onSuccess?.(data);
+          })
+          .catch(() => {
+            if (abortedRef.current) return;
+            setIsPending(false);
+            setIsError(true);
+          });
+      }
+    });
+  };
+
   return {
-    ...mutation,
-    mutate: (vars: any, options?: any) => {
-      mutation.mutate(vars, {
-        onSuccess: (data) => {
-          setUser(data.user);
-          if (data.token) setToken(data.token);
-          options?.onSuccess?.(data);
-        },
-        onError: () => {
-          loginMock(vars.data).then(data => options?.onSuccess?.(data));
-        }
-      });
-    }
+    mutate,
+    isPending,
+    isError,
+    isSuccess: mutation.isSuccess,
+    reset: () => {
+      abortedRef.current = true;
+      setIsPending(false);
+      setIsError(false);
+      mutation.reset();
+    },
   };
 }
