@@ -3,7 +3,7 @@ import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import {
   Calendar, MapPin, Bus, Utensils, Users, ArrowRight,
-  BookOpen, Clock, Search, Loader2, Euro, ChevronLeft,
+  BookOpen, Clock, Search, Loader2, Euro, X, CheckCircle2,
 } from "lucide-react";
 import { useStore } from "@/store/use-store";
 
@@ -33,6 +33,15 @@ type Fiesta = {
   estado: string | null;
 };
 
+type Inscripcion = {
+  id: number;
+  eventoId: number | null;
+  tipo: string;
+  estado: string | null;
+  paradaBus: string | null;
+  pagos: { id: number; estado: string; importe: string; metodo: string | null }[];
+};
+
 type MainTab = "fiestas" | "excursiones" | "viajes";
 type FiestaSection = "proxima" | "previstas" | "realizadas";
 
@@ -47,7 +56,128 @@ function formatFecha(fecha: string | null): string {
   } catch { return fecha; }
 }
 
-// ─── Fiestas section nav ──────────────────────────────────────────────────────
+function authHeaders(token: string | null) {
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+// ─── Inscription modal ────────────────────────────────────────────────────────
+
+function InscripcionModal({
+  fiesta, lang, token, socioId, onSuccess, onClose,
+}: {
+  fiesta: Fiesta;
+  lang: string;
+  token: string | null;
+  socioId: number;
+  onSuccess: (insc: Inscripcion) => void;
+  onClose: () => void;
+}) {
+  const buses = [fiesta.bus1, fiesta.bus2].filter(Boolean) as string[];
+  const precio = parseFloat(fiesta.precio ?? "0");
+  const [bus, setBus] = useState<string>(buses.length === 1 ? buses[0] : "");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const confirm = async () => {
+    if (buses.length > 0 && !bus) {
+      setErr(lang === "eu" ? "Aukeratu autobus geltokia" : "Elige una parada de autobús");
+      return;
+    }
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${API}/inscripciones`, {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          tipo: "fiesta",
+          eventoId: fiesta.id,
+          socioId,
+          paradaBus: bus || null,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error ?? "Error al inscribirse"); setLoading(false); return; }
+      onSuccess(d);
+    } catch { setErr("Error de conexión"); setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in slide-in-from-bottom-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-xl font-extrabold text-foreground">
+              {lang === "eu" ? "Izena eman" : "Inscripción"}
+            </h3>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {lang === "eu" ? (fiesta.nombreEu ?? fiesta.nombre) : fiesta.nombre}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {buses.length > 0 && (
+          <div>
+            <p className="text-sm font-bold text-foreground mb-2 flex items-center gap-2">
+              <Bus className="w-4 h-4 text-primary" />
+              {lang === "eu" ? "Autobus geltokia" : "Parada de autobús"}
+            </p>
+            <div className="space-y-2">
+              {buses.map(b => (
+                <label key={b} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${bus === b ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
+                  <input type="radio" name="bus" value={b} checked={bus === b} onChange={() => setBus(b)} className="accent-primary" />
+                  <span className="text-sm font-medium">📍 {b}</span>
+                </label>
+              ))}
+              <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${bus === "__none__" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
+                <input type="radio" name="bus" value="__none__" checked={bus === "__none__"} onChange={() => setBus("__none__")} className="accent-primary" />
+                <span className="text-sm font-medium text-muted-foreground">
+                  {lang === "eu" ? "Autobus gabe" : "Sin autobús"}
+                </span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {precio > 0 && (
+          <div className="bg-secondary/10 border border-secondary/30 rounded-2xl p-4 flex gap-3">
+            <Euro className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-secondary text-base">{precio}€</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {lang === "eu"
+                  ? "Ordainketa efektiboan egingo da. Onarpenean zordundegi bat sortuko da."
+                  : "El pago se realiza en efectivo. Se registrará un cargo pendiente al confirmar."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {err && (
+          <p className="text-sm text-red-500 font-medium">{err}</p>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={loading}>
+            {lang === "eu" ? "Utzi" : "Cancelar"}
+          </Button>
+          <Button className="flex-1 gap-2" onClick={confirm} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            {lang === "eu" ? "Berretsi" : "Confirmar"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Section nav ──────────────────────────────────────────────────────────────
 
 function FiestaSectionNav({
   lang, active, onChange, counts,
@@ -58,9 +188,9 @@ function FiestaSectionNav({
   counts: { proxima: number; previstas: number; realizadas: number };
 }) {
   const items: { key: FiestaSection; label: string; labelEu: string; activeClass: string }[] = [
-    { key: "proxima",    label: "Próxima",   labelEu: "Hurrengoa",    activeClass: "border-green-400 text-green-700 bg-green-50" },
-    { key: "previstas",  label: "Previstas", labelEu: "Aurreikusiak", activeClass: "border-blue-400 text-blue-700 bg-blue-50" },
-    { key: "realizadas", label: "Realizadas",labelEu: "Egindakoak",   activeClass: "border-muted text-muted-foreground bg-muted/20" },
+    { key: "proxima",    label: "Próxima",    labelEu: "Hurrengoa",    activeClass: "border-green-400 text-green-700 bg-green-50" },
+    { key: "previstas",  label: "Previstas",  labelEu: "Aurreikusiak", activeClass: "border-blue-400 text-blue-700 bg-blue-50" },
+    { key: "realizadas", label: "Realizadas", labelEu: "Egindakoak",   activeClass: "border-muted text-muted-foreground bg-muted/20" },
   ];
   return (
     <div className="grid grid-cols-3 gap-3 mb-6">
@@ -77,7 +207,7 @@ function FiestaSectionNav({
           <p className="text-sm font-bold">{lang === "eu" ? item.labelEu : item.label}</p>
           {counts[item.key] > 0 && (
             <p className="text-xs mt-0.5 opacity-60">
-              {counts[item.key]} {lang === "eu" ? "fiesta" : counts[item.key] > 1 ? "fiestas" : "fiesta"}
+              {counts[item.key]} {counts[item.key] > 1 ? (lang === "eu" ? "festa" : "fiestas") : (lang === "eu" ? "festa" : "fiesta")}
             </p>
           )}
         </button>
@@ -86,150 +216,215 @@ function FiestaSectionNav({
   );
 }
 
-// ─── Próxima detail card ──────────────────────────────────────────────────────
+// ─── Próxima card ─────────────────────────────────────────────────────────────
 
-function ProximaCard({ f, lang }: { f: Fiesta; lang: string }) {
-  const [inscrito, setInscrito] = useState(false);
+function ProximaCard({
+  f, lang, inscripciones, token, socioId, onInscriptionChange,
+}: {
+  f: Fiesta;
+  lang: string;
+  inscripciones: Inscripcion[];
+  token: string | null;
+  socioId: number;
+  onInscriptionChange: (updated: Inscripcion[], fiestaId: number, delta: number) => void;
+}) {
+  const myInsc = inscripciones.find(i => i.tipo === "fiesta" && i.eventoId === f.id) ?? null;
+  const [showModal, setShowModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
   const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
   const descripcion = lang === "eu" ? (f.descripcionEu ?? f.descripcion) : f.descripcion;
   const precio = parseFloat(f.precio ?? "0");
+  const pendingPago = myInsc?.pagos.find(p => p.estado === "pendiente") ?? null;
+
+  const handleSuccess = (insc: Inscripcion) => {
+    setShowModal(false);
+    onInscriptionChange([...inscripciones, insc], f.id, -1);
+  };
+
+  const handleCancel = async () => {
+    if (!myInsc) return;
+    setCancelling(true);
+    try {
+      const r = await fetch(`${API}/inscripciones/${myInsc.id}`, {
+        method: "DELETE",
+        headers: authHeaders(token),
+      });
+      if (r.ok) {
+        onInscriptionChange(inscripciones.filter(i => i.id !== myInsc.id), f.id, +1);
+      }
+    } finally { setCancelling(false); }
+  };
 
   return (
-    <div className="bg-white rounded-3xl border border-primary/20 shadow-md overflow-hidden">
-      {f.fotoUrl ? (
-        <div className="h-56 overflow-hidden relative">
-          <img src={f.fotoUrl} alt={nombre} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          <div className="absolute bottom-0 left-0 right-0 p-5">
-            <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-              {lang === "eu" ? "Hurrengoa" : "Próxima"}
-            </span>
-            <h2 className="text-2xl font-extrabold text-white mt-2">{nombre}</h2>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gradient-to-br from-primary/10 to-background p-6 border-b border-border">
-          <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
-            {lang === "eu" ? "Hurrengoa" : "Próxima"}
-          </span>
-          <h2 className="text-2xl font-extrabold text-foreground mt-2">{nombre}</h2>
-        </div>
+    <>
+      {showModal && (
+        <InscripcionModal
+          fiesta={f} lang={lang} token={token} socioId={socioId}
+          onSuccess={handleSuccess} onClose={() => setShowModal(false)}
+        />
       )}
 
-      <div className="p-5 sm:p-6 space-y-4">
-        {descripcion && <p className="text-muted-foreground leading-relaxed">{descripcion}</p>}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {f.fecha && (
-            <div className="flex gap-3">
-              <Calendar className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                  {lang === "eu" ? "Data" : "Fecha"}
-                </p>
-                <p className="font-semibold text-sm">{formatFecha(f.fecha)}</p>
-              </div>
-            </div>
-          )}
-          {(f.horaInicio || f.horaFin) && (
-            <div className="flex gap-3">
-              <Clock className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                  {lang === "eu" ? "Ordutegia" : "Horario"}
-                </p>
-                <p className="font-semibold text-sm">
-                  {f.horaInicio ?? ""}{f.horaInicio && f.horaFin ? " – " : ""}{f.horaFin ?? ""}
-                </p>
-              </div>
-            </div>
-          )}
-          {f.lugar && (
-            <div className="flex gap-3">
-              <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                  {lang === "eu" ? "Lekua" : "Lugar"}
-                </p>
-                <p className="font-semibold text-sm">{f.lugar}</p>
-              </div>
-            </div>
-          )}
-          {precio > 0 && (
-            <div className="flex gap-3">
-              <Euro className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                  {lang === "eu" ? "Prezioa" : "Precio"}
-                </p>
-                <p className="text-xl font-extrabold text-secondary">{precio}€</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {f.menu && (
-          <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-4 flex gap-3">
-            <Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-muted-foreground font-bold uppercase mb-1">
-                {lang === "eu" ? "Menua" : "Menú"}
-              </p>
-              <p className="font-medium text-sm">{f.menu}</p>
-            </div>
-          </div>
-        )}
-
-        {(f.bus1 || f.bus2) && (
-          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-3">
-            <Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-muted-foreground font-bold uppercase mb-1.5">
-                {lang === "eu" ? "Autobus geltokiak" : "Paradas de autobús"}
-              </p>
-              <div className="space-y-1">
-                {f.bus1 && <p className="text-sm font-medium">📍 {f.bus1}</p>}
-                {f.bus2 && <p className="text-sm font-medium">📍 {f.bus2}</p>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {f.programa && (
-          <div className="bg-muted/30 rounded-2xl p-4">
-            <p className="text-xs text-muted-foreground font-bold uppercase mb-2">
-              {lang === "eu" ? "Programa" : "Programa"}
-            </p>
-            <p className="text-sm whitespace-pre-line leading-relaxed text-foreground">{f.programa}</p>
-          </div>
-        )}
-
-        {f.plazasDisponibles !== null && f.plazasDisponibles > 0 && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Users className="w-4 h-4 text-secondary" />
-            <span>{f.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas disponibles"}</span>
-          </div>
-        )}
-
-        <div className="pt-2">
-          {inscrito ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-200 text-green-700 font-semibold text-sm">
-                ✓ {lang === "eu" ? "Izena emanda" : "Inscrito"}
+      <div className="bg-white rounded-3xl border border-primary/20 shadow-md overflow-hidden">
+        {f.fotoUrl ? (
+          <div className="h-56 overflow-hidden relative">
+            <img src={f.fotoUrl} alt={nombre} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-5">
+              <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+                {lang === "eu" ? "Hurrengoa" : "Próxima"}
               </span>
-              <Button variant="outline" size="sm" onClick={() => setInscrito(false)}>
-                {lang === "eu" ? "Baja eman" : "Cancelar inscripción"}
-              </Button>
+              <h2 className="text-2xl font-extrabold text-white mt-2">{nombre}</h2>
             </div>
-          ) : (
-            <Button size="lg" className="gap-2" onClick={() => setInscrito(true)}>
-              <Users className="w-4 h-4" />
-              {lang === "eu" ? "Izena eman" : "Inscribirme"}
-            </Button>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-br from-primary/10 to-background p-6 border-b border-border">
+            <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
+              {lang === "eu" ? "Hurrengoa" : "Próxima"}
+            </span>
+            <h2 className="text-2xl font-extrabold text-foreground mt-2">{nombre}</h2>
+          </div>
+        )}
+
+        <div className="p-5 sm:p-6 space-y-4">
+          {descripcion && <p className="text-muted-foreground leading-relaxed">{descripcion}</p>}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {f.fecha && (
+              <div className="flex gap-3">
+                <Calendar className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
+                    {lang === "eu" ? "Data" : "Fecha"}
+                  </p>
+                  <p className="font-semibold text-sm">{formatFecha(f.fecha)}</p>
+                </div>
+              </div>
+            )}
+            {(f.horaInicio || f.horaFin) && (
+              <div className="flex gap-3">
+                <Clock className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
+                    {lang === "eu" ? "Ordutegia" : "Horario"}
+                  </p>
+                  <p className="font-semibold text-sm">
+                    {f.horaInicio ?? ""}{f.horaInicio && f.horaFin ? " – " : ""}{f.horaFin ?? ""}
+                  </p>
+                </div>
+              </div>
+            )}
+            {f.lugar && (
+              <div className="flex gap-3">
+                <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
+                    {lang === "eu" ? "Lekua" : "Lugar"}
+                  </p>
+                  <p className="font-semibold text-sm">{f.lugar}</p>
+                </div>
+              </div>
+            )}
+            {precio > 0 && (
+              <div className="flex gap-3">
+                <Euro className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
+                    {lang === "eu" ? "Prezioa" : "Precio"}
+                  </p>
+                  <p className="text-xl font-extrabold text-secondary">{precio}€</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {f.menu && (
+            <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-4 flex gap-3">
+              <Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase mb-1">
+                  {lang === "eu" ? "Menua" : "Menú"}
+                </p>
+                <p className="font-medium text-sm">{f.menu}</p>
+              </div>
+            </div>
           )}
+
+          {(f.bus1 || f.bus2) && (
+            <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-3">
+              <Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-muted-foreground font-bold uppercase mb-1.5">
+                  {lang === "eu" ? "Autobus geltokiak" : "Paradas de autobús"}
+                </p>
+                <div className="space-y-1">
+                  {f.bus1 && <p className="text-sm font-medium">📍 {f.bus1}</p>}
+                  {f.bus2 && <p className="text-sm font-medium">📍 {f.bus2}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {f.programa && (
+            <div className="bg-muted/30 rounded-2xl p-4">
+              <p className="text-xs text-muted-foreground font-bold uppercase mb-2">
+                {lang === "eu" ? "Programa" : "Programa"}
+              </p>
+              <p className="text-sm whitespace-pre-line leading-relaxed text-foreground">{f.programa}</p>
+            </div>
+          )}
+
+          {f.plazasDisponibles !== null && f.plazasDisponibles > 0 && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Users className="w-4 h-4 text-secondary" />
+              <span>{f.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas disponibles"}</span>
+            </div>
+          )}
+
+          {/* Inscription CTA */}
+          <div className="pt-2 space-y-3">
+            {myInsc ? (
+              <>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-200 text-green-700 font-semibold text-sm">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {lang === "eu" ? "Izena emanda" : "Inscrito"}
+                    {myInsc.paradaBus && myInsc.paradaBus !== "__none__" && (
+                      <span className="text-green-600 font-normal">· 📍 {myInsc.paradaBus}</span>
+                    )}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={handleCancel} disabled={cancelling} className="text-red-500 border-red-200 hover:bg-red-50">
+                    {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    {lang === "eu" ? "Baja eman" : "Cancelar inscripción"}
+                  </Button>
+                </div>
+                {pendingPago && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-3">
+                    <Euro className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-700">
+                        {lang === "eu" ? "Ordainketa zain: " : "Pago pendiente: "}
+                        <span>{parseFloat(pendingPago.importe)}€</span>
+                      </p>
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        {lang === "eu"
+                          ? "Efektiboan ordaindu elkarteko bulegoan."
+                          : "Abona en efectivo en la oficina de la asociación."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <Button size="lg" className="gap-2" onClick={() => setShowModal(true)}>
+                <Users className="w-4 h-4" />
+                {lang === "eu" ? "Izena eman" : "Inscribirme"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -296,7 +491,6 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
 
   const latest = fiestas[0];
   const rest = fiestas.slice(1);
-
   const filtered = rest.filter(f => {
     const nombre = (lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre) ?? "";
     const matchName = searchName === "" || nombre.toLowerCase().includes(searchName.toLowerCase());
@@ -308,7 +502,6 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
 
   return (
     <div className="space-y-6">
-      {/* Latest realized */}
       <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
         {latest.fotoUrl && (
           <div className="h-48 overflow-hidden relative">
@@ -327,12 +520,8 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
           )}
           <h3 className="text-xl font-extrabold text-foreground mb-1">{latestNombre}</h3>
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mb-3">
-            {latest.fecha && (
-              <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-primary" />{formatFecha(latest.fecha)}</span>
-            )}
-            {latest.lugar && (
-              <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-primary" />{latest.lugar}</span>
-            )}
+            {latest.fecha && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-primary" />{formatFecha(latest.fecha)}</span>}
+            {latest.lugar && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-primary" />{latest.lugar}</span>}
           </div>
           {latest.memoria && (
             <div className="bg-muted/30 rounded-2xl p-4">
@@ -348,7 +537,6 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
         </div>
       </div>
 
-      {/* Searchable index */}
       {rest.length > 0 && (
         <div>
           <h3 className="font-bold text-foreground mb-3">
@@ -430,26 +618,41 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
 
 // ─── Fiestas tab ──────────────────────────────────────────────────────────────
 
-function FiestasTab({ lang }: { lang: string }) {
+function FiestasTab({ lang, token, userId }: { lang: string; token: string | null; userId: number }) {
   const [section, setSection] = useState<FiestaSection>("proxima");
   const [fiestas, setFiestas] = useState<Fiesta[]>([]);
+  const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchFiestas = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/fiestas`);
-      const d = await r.json();
-      setFiestas(d.items ?? []);
-    } catch { setFiestas([]); } finally { setLoading(false); }
-  }, []);
+      const [rf, ri] = await Promise.all([
+        fetch(`${API}/fiestas`),
+        fetch(`${API}/inscripciones`, { headers: authHeaders(token) }),
+      ]);
+      const df = await rf.json();
+      const di = ri.ok ? await ri.json() : { items: [] };
+      setFiestas(df.items ?? []);
+      setInscripciones((di.items ?? []).filter((i: Inscripcion) => i.tipo === "fiesta"));
+    } catch {
+      setFiestas([]); setInscripciones([]);
+    } finally { setLoading(false); }
+  }, [token]);
 
-  useEffect(() => { fetchFiestas(); }, [fetchFiestas]);
+  useEffect(() => { load(); }, [load]);
 
   const proxima   = fiestas.find(f => f.estado === "proxima") ?? null;
   const previstas = fiestas.filter(f => f.estado === "prevista");
   const realizadas = fiestas.filter(f => f.estado === "realizada");
   const counts = { proxima: proxima ? 1 : 0, previstas: previstas.length, realizadas: realizadas.length };
+
+  const handleInscriptionChange = (updated: Inscripcion[], fiestaId: number, delta: number) => {
+    setInscripciones(updated);
+    setFiestas(prev => prev.map(f =>
+      f.id === fiestaId ? { ...f, plazasDisponibles: (f.plazasDisponibles ?? 0) + delta } : f
+    ));
+  };
 
   if (loading) {
     return (
@@ -464,7 +667,11 @@ function FiestasTab({ lang }: { lang: string }) {
       <FiestaSectionNav lang={lang} active={section} onChange={setSection} counts={counts} />
       {section === "proxima" && (
         proxima
-          ? <ProximaCard f={proxima} lang={lang} />
+          ? <ProximaCard
+              f={proxima} lang={lang} inscripciones={inscripciones}
+              token={token} socioId={userId}
+              onInscriptionChange={handleInscriptionChange}
+            />
           : <p className="text-center py-12 text-muted-foreground">
               {lang === "eu" ? "Ez dago fiesta hurrengoa konfiguratuta" : "No hay próxima fiesta configurada"}
             </p>
@@ -475,7 +682,7 @@ function FiestasTab({ lang }: { lang: string }) {
   );
 }
 
-// ─── Placeholder for excursiones / viajes ────────────────────────────────────
+// ─── Placeholder ──────────────────────────────────────────────────────────────
 
 function ComingSoon({ label, lang }: { label: string; lang: string }) {
   return (
@@ -486,10 +693,11 @@ function ComingSoon({ label, lang }: { label: string; lang: string }) {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function MisEventos() {
   const { t, lang } = useTranslation();
+  const { token, user } = useStore();
   const [tab, setTab] = useState<MainTab>("fiestas");
 
   const TABS: { key: MainTab; label: string; labelEu: string; emoji: string }[] = [
@@ -502,7 +710,6 @@ export default function MisEventos() {
     <div className="max-w-4xl mx-auto px-4 py-10">
       <h1 className="text-3xl font-bold text-foreground mb-8">{t("menu.mis_eventos")}</h1>
 
-      {/* Main tab bar */}
       <div className="flex gap-2 mb-6 flex-wrap">
         {TABS.map(tb => (
           <button
@@ -520,7 +727,9 @@ export default function MisEventos() {
         ))}
       </div>
 
-      {tab === "fiestas"     && <FiestasTab lang={lang} />}
+      {tab === "fiestas" && (
+        <FiestasTab lang={lang} token={token} userId={user?.id ?? 1} />
+      )}
       {tab === "excursiones" && <ComingSoon label={lang === "eu" ? "Txangoak" : "Excursiones"} lang={lang} />}
       {tab === "viajes"      && <ComingSoon label={lang === "eu" ? "Bidaiak" : "Viajes"} lang={lang} />}
     </div>
