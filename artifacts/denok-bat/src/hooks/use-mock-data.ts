@@ -31,5 +31,5 @@ export const mockUser: UserProfile & { roles?: string[] } = {
   name: 'María García',
   email: 'maria@example.com',
   role: 'administrador',
-  roles: ['socio', 'delegado', 'administrador'],
+  roles: ['socio', 'delegado', 'directivo', 'contable', 'administrador'],
 };
