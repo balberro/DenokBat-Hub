@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -32,3 +32,6 @@ ODOO_URL = "https://vls18755.dinaserver.com"
 ODOO_DB = "dinaserver"
 ODOO_USERNAME = "dinaodooapi"
 JWT_EXPIRES_IN = "7d"
+
+[nix]
+channel = "stable-25_05"

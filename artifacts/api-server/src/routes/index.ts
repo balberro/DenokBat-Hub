@@ -6,6 +6,12 @@ import eventosRouter from "./eventos";
 import noticiasRouter from "./noticias";
 import serviciosRouter from "./servicios";
 import contactoRouter from "./contacto";
+import sociosRouter from "./socios";
+import inscripcionesRouter from "./inscripciones";
+import sugerenciasRouter from "./sugerencias";
+import pagosRouter from "./pagos";
+import syncRouter from "./sync";
+import configRouter from "./config";
 
 const router: IRouter = Router();
 
@@ -16,5 +22,11 @@ router.use(eventosRouter);
 router.use(noticiasRouter);
 router.use(serviciosRouter);
 router.use(contactoRouter);
+router.use(sociosRouter);
+router.use(inscripcionesRouter);
+router.use(sugerenciasRouter);
+router.use(pagosRouter);
+router.use(syncRouter);
+router.use(configRouter);
 
 export default router;

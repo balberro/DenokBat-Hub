@@ -1,0 +1,38 @@
+
+DIVULGACIÓN
+	Hoja informatva => Mostrar la última y el índice con acceso de las anteriores, busqueda por fecha(Año-mes), tema(Evento,Actividad), opción de descargar, opción de nueva(directivo)=> Formulario de edición de hoja con guardar borrador y publicar(guardar en base datos) para que se muestre como última.
+	Pulunpe => Mostrar última edición, índice de anteriores, busqueda por fecha(Año-mes), opción de nueva(directivo)=> Formulario para subir el nuevo PDF a la base de datos. Ësta nueva será la que se muestre como última.
+	Noticias => Mostrar las últimas noticias incorporadas,   índice de anteriores, busqueda por fecha(Año-mes), opción de nueva(directivo)=> Formulario para subir el nuevo PDF a la base de datos.
+	Artículos => Mostrar el último artículo incorporado,   índice de anteriores, busqueda por fecha(Año-mes), opción de nuevo(directivo)=> Formulario para subir el nuevo PDF a la base de datos.
+	Galería => Mostrar las últimas fotos incorporadas,   índice de anteriores, busqueda por fecha(Año-mes), tema(Evento,Actividad), opción de nueva(directivo)=> Formulario para subir nuevas fotos a la base de datos.
+
+
+NOSOTROS
+	Presentación => Mostrará un texto breve y fotos con pie(nombre y apellidos) de los fundadores de la asociación.
+	Estatutos => Mostrará un texto breve y el pdf de los estatutos vigentes.
+	Organigrama=> Mostrará el organigrama y enlazará con “Dirección” y “Delegados” que mostraran las fotos de sus componetes con pie(Nombre y apellidos) y cargo o grupo.
+	Galería => Enlace a la misma página que en Divulgación.
+El rol admin tendrá en su gestión de la app acceso para crear el contenido, p.ej. a traves de formulario, de cada página mencionada
+
+ENVEJECIMIENTO ACTIVO (En vez de “Actividades”)
+	Yoga => Accede a la página de yoga.=> Mostrará datos de la actividad, en qué consiste, monitor, horarios y calendario, estado(Prevista, Abierta, En curso, Terminada), si “Abierta” precio de inscripción y enlace, si·”En curso”·lista de participantes, si “Terminada” Memoria y fecha prevista para la próxima.
+	Gimnasia => Accede a la página de gimnasia.=> Mostrará datos de la actividad, en qué consiste, monitor, horarios y calendario, estado(Prevista, Abierta, En curso, Terminada), si “Abierta” precio de inscripción y enlace, si·”En curso”·lista de participantes, si “Terminada” Memoria y fecha prevista para la próxima.
+	TaiChi => Accede a la página de taichi.
+	Montañismo => Accede a la página de montañismo.=> Mostrará datos de las actividades y en qué consiste cada una de ellas, monitor, horarios y calendario, estado(Prevista, Abierta, En curso, Terminada), si “Abierta” precio de inscripción y enlace, si·”En curso”·lista de participantes, si “Terminada” Memoria y fecha prevista para la próxima.
+	Mus => Accede a la página de mus.=> Mostrará datos de la actividad, en qué consiste, monitor, horarios y calendario, estado(Prevista, Abierta, En curso, Terminada), si “Abierta” precio de inscripción y enlace, si·”En curso”·lista de participantes con sus puntuaciones, si “Terminada” Memoria y fecha prevista para la próxima.
+
+El rol directivo tendrá en su gestión de las actividades acceso para crear el contenido, p.ej. a traves de formulario, de cada página mencionada.
+
+
+EVENTOS(En euskara “Ekitaldiak”
+	Fiestas =>Mostrará los 3 eventos con fechas, lugares, precios y estado en cada una.Cada una tendra enlace a su información ás extensa de la misma. Si el estado es “Terminada” se incluirá memoria con fotos.
+	Excursiones => Mostrará 3 enlaces a la próxima a realizar, previstas y realizadas.
+		Próxima => Mostrará información de la excursión con fotos de los lugares a vistar y partes interesantes de la misma, lugar y menú de la comida, fecha, horarios y paradas de bus, botón para inscribirse.
+		Previstas => Mostrará la información que hubiera en resumen para cada una.
+		Realizadas => Mostrará la última realizada con memoria y fotos de la misma. Índice de las anteriores con búsqueda por nombre de excursión y fecha(Año-mesa).
+	Viajes =>Mostrará 3 enlaces al próximo a realizar, previstos y realizados.
+		Próximo => Mostrará información del viaje con fotos de los lugares a vistar y partes interesantes de la mismo, lugares de hospedaje, fechas, horarios, botón para inscribirse.
+		Prevists => Mostrará la información que hubiera en resumen para cada uno.
+		Realizados => Mostrará el último realizado con memoria y fotos del mismo. Índice de los anteriores con búsqueda por nombre del viaje y fecha(Año-mesa).
+
+El rol directivo tendrá en su gestión de los eventos acceso para crear el contenido, p.ej. a traves de formulario, de cada página mencionada.

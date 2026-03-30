@@ -9,6 +9,8 @@ interface AppState {
   setLang: (lang: Language) => void;
   user: UserProfile | null;
   setUser: (user: UserProfile | null) => void;
+  token: string | null;
+  setToken: (token: string | null) => void;
   isDemoMode: boolean;
   setDemoMode: (isDemo: boolean) => void;
 }
@@ -16,10 +18,12 @@ interface AppState {
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
-      lang: 'eu', // Default to Euskara
+      lang: 'eu',
       setLang: (lang) => set({ lang }),
       user: null,
       setUser: (user) => set({ user }),
+      token: null,
+      setToken: (token) => set({ token }),
       isDemoMode: false,
       setDemoMode: (isDemoMode) => set({ isDemoMode }),
     }),

@@ -63,12 +63,14 @@ export function UserMenu({ user, onClose, mobile = false }: UserMenuProps) {
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const setUser = useStore((s) => s.setUser);
+  const setToken = useStore((s) => s.setToken);
   const ref = useRef<HTMLDivElement>(null);
 
   const items = roleMenus[user.role] ?? roleMenus["usuario"];
 
   const handleLogout = () => {
     setUser(null);
+    setToken(null);
     localStorage.removeItem("denok-bat-token");
     setOpen(false);
     onClose?.();

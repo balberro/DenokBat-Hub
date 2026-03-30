@@ -1,4 +1,7 @@
 import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { actividadesTable } from "@workspace/db/schema";
+import { eq, ilike } from "drizzle-orm";
 import { odooCall } from "../lib/odoo";
 import { requireAuth } from "../middlewares/auth";
 
@@ -13,11 +16,49 @@ const MOCK_ACTIVIDADES = [
   { id: 6, nombre: "Cocina saludable", nombreEu: "Sukalde osasuntsua", descripcion: "Talleres de cocina mediterránea", descripcionEu: "Sukalde mediterraneoaren tailerrak", categoria: "Salud", horario: "Miércoles 17:00-19:00", diasSemana: "Miércoles", plazasTotal: 10, plazasDisponibles: 4, imagen: null, estado: "disponible", inscrito: false },
 ];
 
+function dbRowToItem(a: typeof actividadesTable.$inferSelect) {
+  return {
+    id: a.id,
+    nombre: a.nombre,
+    nombreEu: a.nombreEu,
+    descripcion: a.descripcion,
+    descripcionEu: a.descripcionEu,
+    categoria: a.categoria,
+    horario: a.horario,
+    diasSemana: null,
+    plazasTotal: a.plazasTotal ?? 0,
+    plazasDisponibles: a.plazasDisponibles ?? 0,
+    imagen: a.fotoUrl,
+    precio: a.precio,
+    estado: a.estado,
+    inscrito: false,
+  };
+}
+
 router.get("/actividades", async (req, res): Promise<void> => {
   const { categoria, page = "1", limit = "10" } = req.query;
   const pageNum = parseInt(String(page), 10);
   const limitNum = parseInt(String(limit), 10);
+  const offset = (pageNum - 1) * limitNum;
 
+  // 1. Local DB first
+  try {
+    const rows = await db.select().from(actividadesTable)
+      .limit(limitNum).offset(offset);
+
+    if (rows.length > 0) {
+      let items = rows.map(dbRowToItem);
+      if (categoria) {
+        items = items.filter((a) => a.categoria?.toLowerCase() === String(categoria).toLowerCase());
+      }
+      res.json({ items, total: items.length, page: pageNum, limit: limitNum });
+      return;
+    }
+  } catch {
+    // continue
+  }
+
+  // 2. Odoo fallback
   try {
     const domain: unknown[] = [["active", "=", true]];
     if (categoria) {
@@ -27,7 +68,7 @@ router.get("/actividades", async (req, res): Promise<void> => {
     const odooEvents = (await odooCall("event.event", "search_read", [domain], {
       fields: ["name", "description", "date_begin", "date_end", "seats_max", "seats_available"],
       limit: limitNum,
-      offset: (pageNum - 1) * limitNum,
+      offset,
     })) as Record<string, unknown>[];
 
     if (odooEvents && Array.isArray(odooEvents) && odooEvents.length > 0) {
@@ -50,9 +91,10 @@ router.get("/actividades", async (req, res): Promise<void> => {
       return;
     }
   } catch {
-    // Odoo no disponible, usar mock data
+    // Odoo no disponible
   }
 
+  // 3. Mock fallback
   let items = MOCK_ACTIVIDADES;
   if (categoria) {
     items = items.filter((a) => a.categoria.toLowerCase() === String(categoria).toLowerCase());
@@ -66,6 +108,16 @@ router.get("/actividades/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
+  try {
+    const rows = await db.select().from(actividadesTable).where(eq(actividadesTable.id, id)).limit(1);
+    if (rows.length > 0) {
+      res.json(dbRowToItem(rows[0]));
+      return;
+    }
+  } catch {
+    // continue
+  }
+
   const found = MOCK_ACTIVIDADES.find((a) => a.id === id);
   if (!found) {
     res.status(404).json({ error: "Actividad no encontrada" });
@@ -74,9 +126,90 @@ router.get("/actividades/:id", async (req, res): Promise<void> => {
   res.json(found);
 });
 
+router.post("/actividades", requireAuth, async (req, res): Promise<void> => {
+  const { nombre, nombreEu, descripcion, descripcionEu, categoria, horario, plazasTotal, precio } = req.body ?? {};
+  if (!nombre) {
+    res.status(400).json({ error: "nombre es obligatorio" });
+    return;
+  }
+
+  try {
+    const inserted = await db.insert(actividadesTable).values({
+      nombre,
+      nombreEu: nombreEu ?? null,
+      descripcion: descripcion ?? null,
+      descripcionEu: descripcionEu ?? null,
+      categoria: categoria ?? null,
+      horario: horario ?? null,
+      plazasTotal: plazasTotal ?? 0,
+      plazasDisponibles: plazasTotal ?? 0,
+      precio: precio ? String(precio) : "0",
+      estado: "disponible",
+    }).returning();
+    res.status(201).json(dbRowToItem(inserted[0]));
+  } catch (err) {
+    res.status(500).json({ error: "Error creando actividad", detalle: String(err) });
+  }
+});
+
+router.put("/actividades/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  const { nombre, nombreEu, descripcion, descripcionEu, categoria, horario, plazasTotal, plazasDisponibles, precio, estado } = req.body ?? {};
+
+  try {
+    await db.update(actividadesTable).set({
+      ...(nombre && { nombre }),
+      ...(nombreEu !== undefined && { nombreEu }),
+      ...(descripcion !== undefined && { descripcion }),
+      ...(descripcionEu !== undefined && { descripcionEu }),
+      ...(categoria !== undefined && { categoria }),
+      ...(horario !== undefined && { horario }),
+      ...(plazasTotal !== undefined && { plazasTotal }),
+      ...(plazasDisponibles !== undefined && { plazasDisponibles }),
+      ...(precio !== undefined && { precio: String(precio) }),
+      ...(estado && { estado }),
+      updatedAt: new Date(),
+    }).where(eq(actividadesTable.id, id));
+
+    const updated = await db.select().from(actividadesTable).where(eq(actividadesTable.id, id)).limit(1);
+    res.json(updated.length > 0 ? dbRowToItem(updated[0]) : { id });
+  } catch (err) {
+    res.status(500).json({ error: "Error actualizando actividad", detalle: String(err) });
+  }
+});
+
+router.delete("/actividades/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  try {
+    await db.delete(actividadesTable).where(eq(actividadesTable.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error eliminando actividad", detalle: String(err) });
+  }
+});
+
 router.post("/actividades/:id/inscribir", requireAuth, async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(String(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id), 10);
+
+  try {
+    const rows = await db.select().from(actividadesTable).where(eq(actividadesTable.id, id)).limit(1);
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Actividad no encontrada" });
+      return;
+    }
+    const act = rows[0];
+    if (Number(act.plazasDisponibles) <= 0) {
+      res.status(400).json({ error: "No hay plazas disponibles" });
+      return;
+    }
+    await db.update(actividadesTable)
+      .set({ plazasDisponibles: Number(act.plazasDisponibles) - 1, updatedAt: new Date() })
+      .where(eq(actividadesTable.id, id));
+    res.json({ success: true, message: "Inscripción realizada correctamente", estado: "inscrito" });
+    return;
+  } catch {
+    // continue to mock
+  }
 
   const found = MOCK_ACTIVIDADES.find((a) => a.id === id);
   if (!found) {
@@ -87,18 +220,21 @@ router.post("/actividades/:id/inscribir", requireAuth, async (req, res): Promise
     res.status(400).json({ error: "La actividad está cerrada a inscripciones" });
     return;
   }
-
   res.json({ success: true, message: "Inscripción realizada correctamente", estado: "inscrito" });
 });
 
 router.delete("/actividades/:id/inscribir", requireAuth, async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseInt(String(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id), 10);
 
-  const found = MOCK_ACTIVIDADES.find((a) => a.id === id);
-  if (!found) {
-    res.status(404).json({ error: "Actividad no encontrada" });
-    return;
+  try {
+    const rows = await db.select().from(actividadesTable).where(eq(actividadesTable.id, id)).limit(1);
+    if (rows.length > 0) {
+      await db.update(actividadesTable)
+        .set({ plazasDisponibles: Number(rows[0].plazasDisponibles) + 1, updatedAt: new Date() })
+        .where(eq(actividadesTable.id, id));
+    }
+  } catch {
+    // continue
   }
 
   res.json({ success: true, message: "Inscripción cancelada", estado: "cancelado" });

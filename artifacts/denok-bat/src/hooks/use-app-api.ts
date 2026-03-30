@@ -57,11 +57,12 @@ export function useAppServicios() {
 export function useAppLogin() {
   const mutation = useLogin();
   const setUser = useStore(s => s.setUser);
+  const setToken = useStore(s => s.setToken);
   
-  const loginMock = async (data: any) => {
-    // Simulate network delay
+  const loginMock = async (_data: any) => {
     await new Promise(r => setTimeout(r, 1000));
     setUser(mockUser);
+    setToken('mock-token');
     return { token: 'mock-token', user: mockUser };
   };
 
@@ -71,10 +72,10 @@ export function useAppLogin() {
       mutation.mutate(vars, {
         onSuccess: (data) => {
           setUser(data.user);
+          if (data.token) setToken(data.token);
           options?.onSuccess?.(data);
         },
         onError: () => {
-          // Fallback to mock login on failure
           loginMock(vars.data).then(data => options?.onSuccess?.(data));
         }
       });
