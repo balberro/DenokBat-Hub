@@ -71,7 +71,10 @@ artifacts-monorepo/
 | `db_socios` | Socios/miembros | Sí (res.partner) |
 | `db_users` | Usuarios autenticados | No (gestionado por auth) |
 | `db_grupos` | Grupos con delegado | No (gestión propia) |
-| `db_eventos` | Eventos y excursiones | Sí (event.event) |
+| `db_eventos` | Eventos y excursiones (sync Odoo) | Sí (event.event) |
+| `db_eventos_full` | Eventos completos con logística, precios, memoria | No (gestión propia) |
+| `db_eventos_subacts` | Subactividades de excursiones/viajes (FK → db_eventos_full) | No |
+| `db_eventos_media` | Multimedia: fotos, vídeos, PDFs vinculados a eventos/subacts | No |
 | `db_actividades` | Actividades regulares | Sí (event.tag) |
 | `db_inscripciones` | Inscripciones a eventos/actividades | No |
 | `db_pagos` | Pagos y cuotas | Sí (account.move) |

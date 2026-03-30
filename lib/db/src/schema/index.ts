@@ -2,6 +2,7 @@ export * from "./socios";
 export * from "./grupos";
 export * from "./users";
 export * from "./eventos";
+export * from "./eventos_full";
 export * from "./actividades";
 export * from "./inscripciones";
 export * from "./pagos";
