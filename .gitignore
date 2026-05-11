@@ -53,3 +53,8 @@ scripts/dinahosting-test.env.local
 
 # Secretos de producción en el servidor (Dinahosting / Passenger)
 app.local.js
+
+# Volcados / copias locales de base de datos (nunca subir a Git)
+denokbat_local.sql
+*_local.sql
+*.dump
