@@ -80,7 +80,7 @@ artifacts-monorepo/
 | `db_eventos_fotos` | Multimedia (foto/video/pdf) para cualquier tipo de evento | No |
 | `db_actividades` | Actividades regulares | Sí (event.tag) |
 | `db_inscripciones` | Inscripciones a eventos/actividades | No |
-| `db_pagos` | Pagos y cuotas | Sí (account.move) |
+| `db_pagos` | Pagos y cuotas | Sí (membership_membership_line) |
 | `db_sugerencias` | Sugerencias de socios | No |
 | `db_config` | Configuración de la app | No |
 | `db_sync_log` | Log de sincronizaciones | No |

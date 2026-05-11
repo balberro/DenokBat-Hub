@@ -1,33 +1,88 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { FileText, Download, Users, GitBranch } from "lucide-react";
 import { Link } from "wouter";
 
 type Tab = "presentacion" | "estatutos" | "organigrama" | "galeria";
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const FUNDADORES = [
-  { nombre: "Patxi Aguirre Mendibil", descripcion: "Promotor y primer presidente de la asociación.", descripcionEu: "Elkartearen sustatzaile eta lehen presidentea." },
-  { nombre: "María Josefa Etxebarria", descripcion: "Cofundadora y responsable de actividades.", descripcionEu: "Sortzailekidea eta jardueraren arduraduna." },
-  { nombre: "José Ignacio Larrea", descripcion: "Cofundador y primer tesorero.", descripcionEu: "Sortzailekidea eta lehen diruzaina." },
-  { nombre: "Ana María Goikoetxea", descripcion: "Cofundadora y primera secretaria.", descripcionEu: "Sortzailekidea eta lehen idazkaria." },
-  { nombre: "Luis Zabala Uriarte", descripcion: "Cofundador y primer vocal de socios.", descripcionEu: "Sortzailekidea eta lehen bazkide ordezkaria." },
-];
+type NosotrosMember = {
+  id: number;
+  nombre: string;
+  cargo: string;
+  cargoEu: string;
+  descripcion: string;
+  descripcionEu: string;
+  foto: string;
+};
 
-const DIRECTIVOS = [
-  { nombre: "María Etxebarria", cargo: "Presidenta", cargoEu: "Presidentea" },
-  { nombre: "Jose Aguirre", cargo: "Vicepresidente", cargoEu: "Presidenteordea" },
-  { nombre: "Ana Goikoetxea", cargo: "Secretaria", cargoEu: "Idazkaria" },
-  { nombre: "Luis Zabala", cargo: "Tesorero", cargoEu: "Diruzaina" },
-  { nombre: "Ane Larrinaga", cargo: "Vocal de Actividades", cargoEu: "Jardueretako Bozeramailea" },
-  { nombre: "Mikel Uriarte", cargo: "Vocal de Eventos", cargoEu: "Ekitaldietako Bozeramailea" },
-];
+type NosotrosData = {
+  textos: {
+    quienesSomosTitle: string;
+    presentacionTitle: string;
+    historiaEs: string;
+    historiaEu: string;
+  };
+  hitos: Array<{ year: string; texto: string; textoEu: string; icon: string; imageUrl?: string }>;
+  estatutos: {
+    actuales: Array<{
+      id: number;
+      titulo: string;
+      tituloEu: string | null;
+      pdfUrl: string;
+      vigenciaDesde: string;
+      vigenciaHasta: string | null;
+    }>;
+    anteriores: Array<{
+      id: number;
+      titulo: string;
+      tituloEu: string | null;
+      pdfUrl: string;
+      vigenciaDesde: string;
+      vigenciaHasta: string | null;
+    }>;
+  };
+  actasAsamblea: Array<{
+    id: number;
+    titulo: string;
+    tituloEu: string | null;
+    pdfUrl: string;
+    fechaActa: string;
+  }>;
+  organigrama: {
+    fundadores: NosotrosMember[];
+    directivos: NosotrosMember[];
+    delegados: NosotrosMember[];
+  };
+};
 
-const DELEGADOS = [
-  { nombre: "Elena Bilbao", cargo: "Delegada Zona Norte", cargoEu: "Ipar Zonako Ordezkaria", grupo: "Zona Norte" },
-  { nombre: "Pedro Iturriaga", cargo: "Delegado Zona Sur", cargoEu: "Hego Zonako Ordezkaria", grupo: "Zona Sur" },
-  { nombre: "Carmen Zubizarreta", cargo: "Delegada Zona Este", cargoEu: "Ekialde Zonako Ordezkaria", grupo: "Zona Este" },
-];
+const DEFAULT_DATA: NosotrosData = {
+  textos: {
+    quienesSomosTitle: "Quiénes Somos",
+    presentacionTitle: "Nuestra Historia",
+    historiaEs:
+      "Denok Bat nació en 1985 de la mano de un pequeño grupo de jubilados y jubiladas del País Vasco que creían en la convivencia y la solidaridad. En sus inicios contaban con unos 40 socios; hoy somos más de 1.200.",
+    historiaEu:
+      "Denok Bat 1985ean sortu zen, Euskal Herriko jubilatu eta erretiratu talde txiki baten eskutik, elkarrekintzan eta laguntasunean sinesten zutenak. Hasieran 40 kide inguru ziren; gaur egun, 1.200 bazkide baino gehiago ditugu.",
+  },
+  hitos: [
+    { year: "1985", texto: "Fundación", textoEu: "Sorrera", icon: "🌱" },
+    { year: "1992", texto: "Primera sede", textoEu: "Lehen egoitza", icon: "🏠" },
+    { year: "2005", texto: "500 socios", textoEu: "500 bazkide", icon: "🎉" },
+    { year: "2026", texto: "+1.200 socios", textoEu: "+1.200 bazkide", icon: "⭐" },
+  ],
+  estatutos: {
+    actuales: [],
+    anteriores: [],
+  },
+  actasAsamblea: [],
+  organigrama: {
+    fundadores: [],
+    directivos: [],
+    delegados: [],
+  },
+};
 
 const GALERIA_ITEMS = [
   { id: 1, titulo: "Excursión a Bilbao", tituloEu: "Bilbaoko Txangoa", fecha: "2026-03-08", tema: "Evento", emoji: "🏛️" },
@@ -38,37 +93,36 @@ const GALERIA_ITEMS = [
   { id: 6, titulo: "Senderismo Otoño", tituloEu: "Udazkeneko Mendi-ibilaldia", fecha: "2025-10-12", tema: "Actividad", emoji: "🏔️" },
 ];
 
-function PresentacionTab({ lang }: { lang: string }) {
+function resolveMediaUrl(url?: string | null) {
+  const value = String(url ?? "");
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) return value;
+  return `${API_BASE}${value.startsWith("/") ? "" : "/"}${value}`;
+}
+
+function PresentacionTab({ lang, data }: { lang: string; data: NosotrosData }) {
+  const historia = lang === "eu" ? data.textos.historiaEu : data.textos.historiaEs;
+  const bloques = historia.split(/\n{2,}/g).filter(Boolean);
   return (
     <div className="space-y-8">
       <div className="bg-white rounded-2xl border border-border shadow-sm p-8">
-        <h2 className="text-2xl font-bold text-foreground mb-4">{lang === "eu" ? "Gure Historia" : "Nuestra Historia"}</h2>
+        <h2 className="text-2xl font-bold text-foreground mb-4">{lang === "eu" ? "Gure Historia" : (data.textos.presentacionTitle || "Nuestra Historia")}</h2>
         <div className="prose prose-gray max-w-none space-y-4 text-muted-foreground leading-relaxed">
-          <p>
-            {lang === "eu"
-              ? "Denok Bat 1985ean sortu zen, Euskal Herriko jubilatu eta erretiratu talde txiki baten eskutik, elkarrekintzan eta laguntasunean sinesten zutenak. Hasieran 40 kide inguru ziren; gaur egun, 1.200 bazkide baino gehiago ditugu."
-              : "Denok Bat nació en 1985 de la mano de un pequeño grupo de jubilados y jubiladas del País Vasco que creían en la convivencia y la solidaridad. En sus inicios contaban con unos 40 socios; hoy somos más de 1.200."}
-          </p>
-          <p>
-            {lang === "eu"
-              ? "Gure helburua beti berdintsua izan da: adin nagusiko pertsonen ongizatea sustatzea, parte-hartzea bultzatzea eta bizitza aktiboa ahalbidetzea. Horretarako, jarduera anitz eskaintzen ditugu: yoga, gimnasia, mendi-ibilaldiak, kulturaldia eta askoz gehiago."
-              : "Nuestro propósito siempre ha sido el mismo: promover el bienestar de las personas mayores, fomentar la participación y facilitar una vida activa. Para ello ofrecemos una amplia gama de actividades: yoga, gimnasia, montañismo, excursiones culturales y mucho más."}
-          </p>
-          <p>
-            {lang === "eu"
-              ? "Denok Bat hitz egiten du: 'denak bat' esan nahi du euskaraz. Izen hau gure filosofiaren sinbolo da: batasunean eta elkartasunean, denok batera."
-              : "Denok Bat significa 'todos juntos' en euskera. Un nombre que sintetiza nuestra filosofía: en unión y solidaridad, todos y todas juntas."}
-          </p>
+          {bloques.length > 0 ? bloques.map((b, i) => <p key={i}>{b}</p>) : <p>{historia}</p>}
         </div>
       </div>
 
       <div>
         <h2 className="text-2xl font-bold text-foreground mb-5">{lang === "eu" ? "Sortzaileak" : "Los Fundadores"}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {FUNDADORES.map((f, i) => (
+          {data.organigrama.fundadores.map((f, i) => (
             <div key={i} className="bg-white rounded-2xl border border-border p-5 flex items-start gap-4">
               <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                <span className="text-xl font-bold text-primary">{f.nombre[0]}</span>
+                {f.foto ? (
+                  <img src={f.foto} alt={f.nombre} className="w-14 h-14 rounded-full object-cover" />
+                ) : (
+                  <span className="text-xl font-bold text-primary">{f.nombre?.[0] ?? "?"}</span>
+                )}
               </div>
               <div>
                 <h3 className="font-bold text-foreground text-sm">{f.nombre}</h3>
@@ -80,16 +134,15 @@ function PresentacionTab({ lang }: { lang: string }) {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { year: "1985", texto: lang === "eu" ? "Sorrera" : "Fundación", icon: "🌱" },
-          { year: "1992", texto: lang === "eu" ? "Lehen egoitza" : "Primera sede", icon: "🏠" },
-          { year: "2005", texto: lang === "eu" ? "500 bazkide" : "500 socios", icon: "🎉" },
-          { year: "2026", texto: lang === "eu" ? "+1.200 bazkide" : "+1.200 socios", icon: "⭐" },
-        ].map((h, i) => (
+        {data.hitos.map((h, i) => (
           <div key={i} className="bg-white rounded-2xl border border-border p-5 text-center">
-            <span className="text-3xl">{h.icon}</span>
+            {h.imageUrl ? (
+              <img src={h.imageUrl} alt={h.texto || h.year} className="w-12 h-12 object-cover rounded-lg mx-auto" />
+            ) : (
+              <span className="text-3xl">{h.icon || "⭐"}</span>
+            )}
             <p className="text-2xl font-extrabold text-primary mt-2">{h.year}</p>
-            <p className="text-sm text-muted-foreground mt-1">{h.texto}</p>
+            <p className="text-sm text-muted-foreground mt-1">{lang === "eu" ? (h.textoEu || h.texto) : h.texto}</p>
           </div>
         ))}
       </div>
@@ -97,7 +150,8 @@ function PresentacionTab({ lang }: { lang: string }) {
   );
 }
 
-function EstatutosTab({ lang }: { lang: string }) {
+function EstatutosTab({ lang, data }: { lang: string; data: NosotrosData }) {
+  const all = [...data.estatutos.actuales, ...data.estatutos.anteriores];
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-foreground">{lang === "eu" ? "Estatutuak" : "Estatutos"}</h2>
@@ -113,25 +167,92 @@ function EstatutosTab({ lang }: { lang: string }) {
             : "Los estatutos fueron aprobados el 15 de enero de 1985 y la última modificación se realizó el 10 de junio de 2019 en Asamblea General."}
         </p>
         <div className="bg-muted/30 rounded-xl p-4">
-          <p className="text-sm font-semibold text-foreground mb-1">{lang === "eu" ? "Oinarrizko artikuluak:" : "Artículos principales:"}</p>
-          <ul className="text-sm space-y-1">
-            <li>• {lang === "eu" ? "Art. 1 — Izena eta egoitza" : "Art. 1 — Denominación y domicilio"}</li>
-            <li>• {lang === "eu" ? "Art. 2 — Helburuak" : "Art. 2 — Fines y objetivos"}</li>
-            <li>• {lang === "eu" ? "Art. 3 — Bazkideak" : "Art. 3 — Los socios"}</li>
-            <li>• {lang === "eu" ? "Art. 4 — Organo gobernatzaileak" : "Art. 4 — Órganos de gobierno"}</li>
-            <li>• {lang === "eu" ? "Art. 5 — Ekonomia eta finantza" : "Art. 5 — Régimen económico"}</li>
+          <p className="text-sm font-semibold text-foreground mb-2">{lang === "eu" ? "Estatutu indardunak" : "Estatutos vigentes"}</p>
+          <ul className="text-sm space-y-2">
+            {data.estatutos.actuales.map((e) => (
+              <li key={e.id} className="flex items-center justify-between gap-3">
+                <span>{lang === "eu" ? (e.tituloEu || e.titulo) : e.titulo}</span>
+                <a href={e.pdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary">
+                  <Download className="w-4 h-4" />
+                  PDF
+                </a>
+              </li>
+            ))}
+            {data.estatutos.actuales.length === 0 && (
+              <li className="text-muted-foreground">{lang === "eu" ? "Ez dago estatutu indardunik." : "No hay estatutos vigentes."}</li>
+            )}
           </ul>
         </div>
       </div>
-      <div className="flex gap-3">
-        <Button className="gap-2"><Download className="w-4 h-4" />{lang === "eu" ? "Estatutuak deskargatu (PDF)" : "Descargar Estatutos (PDF)"}</Button>
+
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-3">{lang === "eu" ? "Aurreko estatutuak" : "Estatutos anteriores"}</h3>
+        <div className="space-y-2">
+          {data.estatutos.anteriores.map((e) => (
+            <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div>
+                <p className="font-medium text-foreground">{lang === "eu" ? (e.tituloEu || e.titulo) : e.titulo}</p>
+                <p className="text-xs text-muted-foreground">
+                  {e.vigenciaDesde} {e.vigenciaHasta ? `→ ${e.vigenciaHasta}` : "→ actual"}
+                </p>
+              </div>
+              <a href={e.pdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary">
+                <FileText className="w-4 h-4" />
+                PDF
+              </a>
+            </div>
+          ))}
+          {data.estatutos.anteriores.length === 0 && (
+            <p className="text-sm text-muted-foreground">{lang === "eu" ? "Ez dago aurreko estatuturik." : "No hay estatutos anteriores."}</p>
+          )}
+        </div>
+      </div>
+
+      {all.length > 0 && (
+        <div className="flex gap-3">
+          <a href={all[0].pdfUrl} target="_blank" rel="noopener noreferrer">
+            <Button className="gap-2"><Download className="w-4 h-4" />{lang === "eu" ? "Azken PDFa ireki" : "Abrir último PDF"}</Button>
+          </a>
+        </div>
+      )}
+      {all.length === 0 && (
+        <div className="flex gap-3">
+          <Button className="gap-2" disabled><Download className="w-4 h-4" />{lang === "eu" ? "Ez dago PDFarik" : "Sin PDFs cargados"}</Button>
+        </div>
+      )}
+      <div className="hidden">
         <Button variant="outline" className="gap-2"><FileText className="w-4 h-4" />{lang === "eu" ? "Batzar Nagusiak" : "Actas Asambleas"}</Button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-3">{lang === "eu" ? "Batzar Akten Indizea" : "Índice de actas de asamblea"}</h3>
+        <div className="space-y-2">
+          {data.actasAsamblea.map((a) => (
+            <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div>
+                <p className="font-medium text-foreground">{lang === "eu" ? (a.tituloEu || a.titulo) : a.titulo}</p>
+                <p className="text-xs text-muted-foreground">{a.fechaActa}</p>
+              </div>
+              <div className="flex gap-2">
+                <a href={a.pdfUrl} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm">Ver PDF</Button>
+                </a>
+                <a href={a.pdfUrl} download>
+                  <Button size="sm">Descargar</Button>
+                </a>
+              </div>
+            </div>
+          ))}
+          {data.actasAsamblea.length === 0 && (
+            <p className="text-sm text-muted-foreground">{lang === "eu" ? "Ez dago aktarik." : "No hay actas registradas."}</p>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function OrganigramaTab({ lang }: { lang: string }) {
+function OrganigramaTab({ lang, data }: { lang: string; data: NosotrosData }) {
   const [vista, setVista] = useState<"organigrama" | "directivos" | "delegados">("organigrama");
 
   return (
@@ -190,14 +311,20 @@ function OrganigramaTab({ lang }: { lang: string }) {
         <div>
           <h3 className="text-xl font-bold text-foreground mb-4">{lang === "eu" ? "Zuzendaritza Batzordea" : "Junta Directiva"}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {DIRECTIVOS.map((d, i) => (
+            {data.organigrama.directivos.map((d, i) => (
               <div key={i} className="bg-white rounded-2xl border border-border p-5 flex items-center gap-4">
                 <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-xl font-bold text-primary">{d.nombre[0]}</span>
+                  {d.foto ? (
+                    <img src={d.foto} alt={d.nombre} className="w-14 h-14 rounded-full object-cover" />
+                  ) : (
+                    <span className="text-xl font-bold text-primary">{d.nombre?.[0] ?? "?"}</span>
+                  )}
                 </div>
                 <div>
                   <h4 className="font-bold text-foreground">{d.nombre}</h4>
-                  <p className="text-sm text-muted-foreground">{lang === "eu" ? d.cargoEu : d.cargo}</p>
+                  {(lang === "eu" ? d.descripcionEu : d.descripcion) && (
+                    <p className="text-xs text-muted-foreground mt-1">{lang === "eu" ? d.descripcionEu : d.descripcion}</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -209,14 +336,20 @@ function OrganigramaTab({ lang }: { lang: string }) {
         <div>
           <h3 className="text-xl font-bold text-foreground mb-4">{lang === "eu" ? "Zona Ordezkari" : "Delegados de Zona"}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {DELEGADOS.map((d, i) => (
+            {data.organigrama.delegados.map((d, i) => (
               <div key={i} className="bg-white rounded-2xl border border-border p-5 flex items-center gap-4">
                 <div className="w-14 h-14 bg-secondary/10 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-xl font-bold text-secondary">{d.nombre[0]}</span>
+                  {d.foto ? (
+                    <img src={d.foto} alt={d.nombre} className="w-14 h-14 rounded-full object-cover" />
+                  ) : (
+                    <span className="text-xl font-bold text-secondary">{d.nombre?.[0] ?? "?"}</span>
+                  )}
                 </div>
                 <div>
                   <h4 className="font-bold text-foreground">{d.nombre}</h4>
-                  <p className="text-sm text-muted-foreground">{lang === "eu" ? d.cargoEu : d.cargo}</p>
+                  {(lang === "eu" ? d.descripcionEu : d.descripcion) && (
+                    <p className="text-xs text-muted-foreground mt-1">{lang === "eu" ? d.descripcionEu : d.descripcion}</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -228,11 +361,46 @@ function OrganigramaTab({ lang }: { lang: string }) {
 }
 
 function GaleriaTab({ lang }: { lang: string }) {
+  const [items, setItems] = useState<Array<{ id: number; titulo: string; tituloEu: string; fecha: string; tema: "Evento" | "Actividad"; mediaUrl?: string | null }>>(
+    GALERIA_ITEMS.map((g) => ({ ...g, tema: (g.tema === "Actividad" ? "Actividad" : "Evento") as "Evento" | "Actividad", mediaUrl: null })),
+  );
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/galeria`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!active) return;
+        const incoming = Array.isArray(d?.items) ? d.items : [];
+        const mapped = incoming.map((g: any) => ({
+          id: Number(g.id ?? 0),
+          titulo: String(g.titulo ?? ""),
+          tituloEu: String(g.tituloEu ?? g.titulo ?? ""),
+          fecha: String(g.fecha ?? ""),
+          tema: (g.tema === "Actividad" ? "Actividad" : "Evento") as "Evento" | "Actividad",
+          mediaUrl: g.mediaUrl ? String(g.mediaUrl) : null,
+        }));
+        const sorted = mapped.sort((a, b) => {
+          const aTs = Date.parse(a.fecha || "1970-01-01");
+          const bTs = Date.parse(b.fecha || "1970-01-01");
+          return bTs - aTs || b.id - a.id;
+        });
+        setItems(sorted);
+      } catch {
+        // fallback static
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-foreground">{lang === "eu" ? "Argazki Galeria" : "Galería de Fotos"}</h2>
-        <Link href="/divulgacion">
+        <Link href="/divulgacion?tab=galeria">
           <Button variant="outline" size="sm">
             {lang === "eu" ? "Galeria osoa ikusi" : "Ver galería completa"}
           </Button>
@@ -240,17 +408,38 @@ function GaleriaTab({ lang }: { lang: string }) {
       </div>
       <p className="text-muted-foreground text-sm">{lang === "eu" ? "Galeria osoa Dibulgazioa atalean dago." : "La galería completa está disponible en la sección de Divulgación."}</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        {GALERIA_ITEMS.map(g => (
-          <div key={g.id} className="bg-white rounded-2xl border border-border overflow-hidden hover:shadow-md transition-all cursor-pointer group">
-            <div className="h-32 bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-              <span className="text-5xl group-hover:scale-110 transition-transform duration-300">{g.emoji}</span>
-            </div>
-            <div className="p-3">
-              <p className="font-semibold text-sm text-foreground line-clamp-1">{lang === "eu" ? g.tituloEu : g.titulo}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{new Date(g.fecha).toLocaleDateString("es-ES", { month: "short", year: "numeric" })}</p>
-            </div>
-          </div>
-        ))}
+        {(() => {
+          const albumMap = new Map<string, typeof items>();
+          for (const item of items) {
+            const key = `${item.tema}__${item.fecha}__${item.titulo}`;
+            const bucket = albumMap.get(key) ?? [];
+            bucket.push(item);
+            albumMap.set(key, bucket);
+          }
+          const albums = Array.from(albumMap.entries())
+            .map(([key, list]) => ({ key, cover: list[0], items: list }))
+            .slice(0, 12);
+
+          return albums.map(({ key, cover, items: albumItems }) => (
+            <Link key={key} href="/divulgacion?tab=galeria" className="block">
+              <div className="text-left bg-white rounded-2xl border border-border overflow-hidden hover:shadow-md transition-all cursor-pointer group">
+                <div className="h-32 bg-linear-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
+                  {cover.mediaUrl ? (
+                    <img src={resolveMediaUrl(cover.mediaUrl)} alt={lang === "eu" ? cover.tituloEu : cover.titulo} className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform" />
+                  ) : (
+                    <span className="text-5xl group-hover:scale-110 transition-transform duration-300">📷</span>
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="font-semibold text-sm text-foreground line-clamp-1">{lang === "eu" ? cover.tituloEu : cover.titulo}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {new Date(cover.fecha || "1970-01-01").toLocaleDateString("es-ES", { month: "short", year: "numeric" })} · {lang === "eu" ? (cover.tema === "Evento" ? "Ekitaldia" : "Jarduera") : cover.tema} · {albumItems.length} {lang === "eu" ? "argazki" : "fotos"}
+                  </p>
+                </div>
+              </div>
+            </Link>
+          ));
+        })()}
       </div>
     </div>
   );
@@ -259,6 +448,44 @@ function GaleriaTab({ lang }: { lang: string }) {
 export default function QuienesSomos() {
   const { lang } = useTranslation();
   const [tab, setTab] = useState<Tab>("presentacion");
+  const [data, setData] = useState<NosotrosData>(DEFAULT_DATA);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/nosotros/public`);
+        if (!r.ok) return;
+        const payload = await r.json();
+        if (!active) return;
+        setData({
+          textos: {
+            quienesSomosTitle: String(payload?.textos?.quienesSomosTitle ?? DEFAULT_DATA.textos.quienesSomosTitle),
+            presentacionTitle: String(payload?.textos?.presentacionTitle ?? DEFAULT_DATA.textos.presentacionTitle),
+            historiaEs: String(payload?.textos?.historiaEs ?? DEFAULT_DATA.textos.historiaEs),
+            historiaEu: String(payload?.textos?.historiaEu ?? DEFAULT_DATA.textos.historiaEu),
+          },
+          hitos: Array.isArray(payload?.hitos) && payload.hitos.length > 0 ? payload.hitos : DEFAULT_DATA.hitos,
+          estatutos: {
+            actuales: Array.isArray(payload?.estatutos?.actuales) ? payload.estatutos.actuales : [],
+            anteriores: Array.isArray(payload?.estatutos?.anteriores) ? payload.estatutos.anteriores : [],
+          },
+          actasAsamblea: Array.isArray(payload?.actasAsamblea) ? payload.actasAsamblea : [],
+          organigrama: {
+            fundadores: Array.isArray(payload?.organigrama?.fundadores) ? payload.organigrama.fundadores : [],
+            directivos: Array.isArray(payload?.organigrama?.directivos) ? payload.organigrama.directivos : [],
+            delegados: Array.isArray(payload?.organigrama?.delegados) ? payload.organigrama.delegados : [],
+          },
+        });
+      } catch {
+        // fallback con datos por defecto
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const TABS: { key: Tab; label: string; labelEu: string; icon: ReactNode }[] = [
     { key: "presentacion", label: "Presentación", labelEu: "Aurkezpena", icon: <Users className="w-4 h-4" /> },
@@ -269,10 +496,10 @@ export default function QuienesSomos() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <div className="bg-gradient-to-b from-primary/5 to-background py-14 border-b border-border">
+      <div className="bg-linear-to-b from-primary/5 to-background py-14 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-5xl font-extrabold text-foreground mb-3">
-            {lang === "eu" ? "Nor Gara" : "Quiénes Somos"}
+            {lang === "eu" ? "Nor Gara" : (data.textos.quienesSomosTitle || "Quiénes Somos")}
           </h1>
           <p className="text-xl text-muted-foreground">
             {lang === "eu"
@@ -293,9 +520,9 @@ export default function QuienesSomos() {
           ))}
         </div>
 
-        {tab === "presentacion" && <PresentacionTab lang={lang} />}
-        {tab === "estatutos" && <EstatutosTab lang={lang} />}
-        {tab === "organigrama" && <OrganigramaTab lang={lang} />}
+        {tab === "presentacion" && <PresentacionTab lang={lang} data={data} />}
+        {tab === "estatutos" && <EstatutosTab lang={lang} data={data} />}
+        {tab === "organigrama" && <OrganigramaTab lang={lang} data={data} />}
         {tab === "galeria" && <GaleriaTab lang={lang} />}
       </div>
     </div>

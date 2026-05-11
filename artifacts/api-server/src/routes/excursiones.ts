@@ -6,6 +6,29 @@ import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
+function errorDetail(err: unknown): string {
+  const e = err as { message?: string; cause?: { message?: string; code?: string; detail?: string } };
+  const parts: string[] = [];
+  if (e?.message) parts.push(e.message);
+  if (e?.cause?.message) parts.push(e.cause.message);
+  if (e?.cause?.detail) parts.push(e.cause.detail);
+  if (e?.cause?.code) parts.push(`PGCODE=${e.cause.code}`);
+  return parts.join(" | ");
+}
+
+function nullIfEmpty(value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+}
+
+function toOptionalNumber(value: unknown): number | null {
+  const normalized = nullIfEmpty(value);
+  if (normalized === null) return null;
+  const n = Number(normalized);
+  return Number.isNaN(n) ? null : n;
+}
+
 async function fetchSubacts(excursionId: number) {
   return db.select().from(excursionesSubactsTable)
     .where(eq(excursionesSubactsTable.excursionId, excursionId))
@@ -21,7 +44,7 @@ router.get("/excursiones", async (req, res): Promise<void> => {
       : await db.select().from(excursionesTable).orderBy(desc(excursionesTable.fecha));
     res.json({ items: rows, total: rows.length });
   } catch (err) {
-    res.status(500).json({ error: "Error listando excursiones", detalle: String(err) });
+    res.status(500).json({ error: "Error listando excursiones", detalle: errorDetail(err) });
   }
 });
 
@@ -35,40 +58,42 @@ router.get("/excursiones/:id", async (req, res): Promise<void> => {
     const subacts = await fetchSubacts(id);
     res.json({ ...row, subactividades: subacts });
   } catch (err) {
-    res.status(500).json({ error: "Error obteniendo excursión", detalle: String(err) });
+    res.status(500).json({ error: "Error obteniendo excursión", detalle: errorDetail(err) });
   }
 });
 
 // POST /excursiones — crear
 router.post("/excursiones", requireAuth, async (req, res): Promise<void> => {
   const body = req.body ?? {};
-  if (!body.nombre) { res.status(400).json({ error: "'nombre' es obligatorio" }); return; }
+  const nombre = typeof body.nombre === "string" ? body.nombre.trim() : "";
+  if (!nombre) { res.status(400).json({ error: "'nombre' es obligatorio" }); return; }
   try {
+    const plazasTotal = toOptionalNumber(body.plazasTotal) ?? 0;
     const [inserted] = await db.insert(excursionesTable).values({
-      nombre:              body.nombre,
-      nombreEu:            body.nombreEu            ?? null,
-      descripcion:         body.descripcion         ?? null,
-      descripcionEu:       body.descripcionEu       ?? null,
-      destino:             body.destino             ?? null,
-      fecha:               body.fecha               ?? null,
-      fechaRegreso:        body.fechaRegreso        ?? null,
-      fotoUrl:             body.fotoUrl             ?? null,
-      precioInscripcion:   body.precioInscripcion   ?? null,
-      precioSuplemento:    body.precioSuplemento    ?? null,
-      subactsInscripcion:  body.subactsInscripcion  ?? null,
-      subactsSuplemento:   body.subactsSuplemento   ?? null,
-      fechaFinInscripcion: body.fechaFinInscripcion ?? null,
-      menu:                body.menu                ?? null,
-      bus1:                body.bus1                ?? null,
-      bus2:                body.bus2                ?? null,
-      horaRegreso:         body.horaRegreso         ?? null,
-      plazasTotal:         body.plazasTotal         ?? 0,
-      plazasDisponibles:   body.plazasTotal         ?? 0,
-      estado:              body.estado              ?? "prevista",
-      observaciones:       body.observaciones       ?? null,
-      memoriaParticipantes: body.memoriaParticipantes ?? null,
-      resumen:             body.resumen             ?? null,
-      publicado:           body.publicado           ?? false,
+      nombre,
+      nombreEu:            nullIfEmpty(body.nombreEu) as string | null,
+      descripcion:         nullIfEmpty(body.descripcion) as string | null,
+      descripcionEu:       nullIfEmpty(body.descripcionEu) as string | null,
+      destino:             nullIfEmpty(body.destino) as string | null,
+      fecha:               nullIfEmpty(body.fecha) as string | null,
+      fechaRegreso:        nullIfEmpty(body.fechaRegreso) as string | null,
+      fotoUrl:             nullIfEmpty(body.fotoUrl) as string | null,
+      precioInscripcion:   nullIfEmpty(body.precioInscripcion) as string | null,
+      precioSuplemento:    nullIfEmpty(body.precioSuplemento) as string | null,
+      subactsInscripcion:  nullIfEmpty(body.subactsInscripcion) as string | null,
+      subactsSuplemento:   nullIfEmpty(body.subactsSuplemento) as string | null,
+      fechaFinInscripcion: nullIfEmpty(body.fechaFinInscripcion) as string | null,
+      menu:                nullIfEmpty(body.menu) as string | null,
+      bus1:                nullIfEmpty(body.bus1) as string | null,
+      bus2:                nullIfEmpty(body.bus2) as string | null,
+      horaRegreso:         nullIfEmpty(body.horaRegreso) as string | null,
+      plazasTotal,
+      plazasDisponibles:   plazasTotal,
+      estado:              (nullIfEmpty(body.estado) as string | null) ?? "prevista",
+      observaciones:       nullIfEmpty(body.observaciones) as string | null,
+      memoriaParticipantes: nullIfEmpty(body.memoriaParticipantes) as string | null,
+      resumen:             nullIfEmpty(body.resumen) as string | null,
+      publicado:           Boolean(body.publicado),
     }).returning();
 
     // Subactividades opcionales
@@ -89,7 +114,7 @@ router.post("/excursiones", requireAuth, async (req, res): Promise<void> => {
     }
     res.status(201).json(inserted);
   } catch (err) {
-    res.status(500).json({ error: "Error creando excursión", detalle: String(err) });
+    res.status(500).json({ error: "Error creando excursión", detalle: errorDetail(err) });
   }
 });
 
@@ -100,11 +125,17 @@ router.put("/excursiones/:id", requireAuth, async (req, res): Promise<void> => {
   const body = req.body ?? {};
   try {
     const fields: Record<string, unknown> = { updatedAt: new Date() };
-    const pick = (k: string) => { if (body[k] !== undefined) fields[k] = body[k] ?? null; };
+    const pick = (k: string) => {
+      if (body[k] !== undefined) fields[k] = nullIfEmpty(body[k]);
+    };
     ["nombre","nombreEu","descripcion","descripcionEu","destino","fecha","fechaRegreso",
      "fotoUrl","precioInscripcion","precioSuplemento","subactsInscripcion","subactsSuplemento",
      "fechaFinInscripcion","menu","bus1","bus2","horaRegreso","plazasTotal","plazasDisponibles",
      "estado","observaciones","memoriaParticipantes","resumen","publicado"].forEach(pick);
+
+    if (body.plazasTotal !== undefined) fields.plazasTotal = toOptionalNumber(body.plazasTotal) ?? 0;
+    if (body.plazasDisponibles !== undefined) fields.plazasDisponibles = toOptionalNumber(body.plazasDisponibles) ?? 0;
+    if (body.publicado !== undefined) fields.publicado = Boolean(body.publicado);
 
     await db.update(excursionesTable).set(fields).where(eq(excursionesTable.id, id));
 
@@ -130,7 +161,7 @@ router.put("/excursiones/:id", requireAuth, async (req, res): Promise<void> => {
     const subacts = await fetchSubacts(id);
     res.json({ ...updated, subactividades: subacts });
   } catch (err) {
-    res.status(500).json({ error: "Error actualizando excursión", detalle: String(err) });
+    res.status(500).json({ error: "Error actualizando excursión", detalle: errorDetail(err) });
   }
 });
 
@@ -142,7 +173,7 @@ router.delete("/excursiones/:id", requireAuth, async (req, res): Promise<void> =
     await db.delete(excursionesTable).where(eq(excursionesTable.id, id));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: "Error eliminando excursión", detalle: String(err) });
+    res.status(500).json({ error: "Error eliminando excursión", detalle: errorDetail(err) });
   }
 });
 
@@ -157,7 +188,7 @@ router.post("/excursiones/:id/subacts", requireAuth, async (req, res): Promise<v
       .values({ excursionId, orden, nombre, nombreEu, fotoUrl, memoria }).returning();
     res.status(201).json(inserted);
   } catch (err) {
-    res.status(500).json({ error: "Error creando subactividad", detalle: String(err) });
+    res.status(500).json({ error: "Error creando subactividad", detalle: errorDetail(err) });
   }
 });
 
@@ -176,7 +207,7 @@ router.put("/excursiones/:id/subacts/:subId", requireAuth, async (req, res): Pro
     const [updated] = await db.select().from(excursionesSubactsTable).where(eq(excursionesSubactsTable.id, subId)).limit(1);
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: "Error actualizando subactividad", detalle: String(err) });
+    res.status(500).json({ error: "Error actualizando subactividad", detalle: errorDetail(err) });
   }
 });
 
@@ -187,7 +218,7 @@ router.delete("/excursiones/:id/subacts/:subId", requireAuth, async (req, res): 
     await db.delete(excursionesSubactsTable).where(eq(excursionesSubactsTable.id, subId));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: "Error eliminando subactividad", detalle: String(err) });
+    res.status(500).json({ error: "Error eliminando subactividad", detalle: errorDetail(err) });
   }
 });
 

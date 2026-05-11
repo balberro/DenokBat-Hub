@@ -2,7 +2,7 @@ import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Settings, Package, Shield, RefreshCw, Database, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "@/store/use-store";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -146,6 +146,394 @@ function DatabaseStatusPanel({ token }: { token: string }) {
   );
 }
 
+function normalizeConfigValue(value: string) {
+  return String(value ?? "").trim();
+}
+
+function AdminHomeEditor({ token }: { token: string | null }) {
+  const [form, setForm] = useState({
+    heroTitle: "",
+    heroSubtitle: "",
+    heroSubtitleEu: "",
+    heroImage: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/config/public`);
+        const d = await r.json();
+        setForm({
+          heroTitle: String(d?.["home.hero_title"] ?? ""),
+          heroSubtitle: String(d?.["home.hero_subtitle"] ?? ""),
+          heroSubtitleEu: String(d?.["home.hero_subtitle_eu"] ?? ""),
+          heroImage: String(d?.["home.hero_image"] ?? ""),
+        });
+      } catch {
+        // keep defaults
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const saveHome = async () => {
+    if (!token) return;
+    setSaving(true);
+    setNotice("");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+      const entries = [
+        ["home.hero_title", form.heroTitle],
+        ["home.hero_subtitle", form.heroSubtitle],
+        ["home.hero_subtitle_eu", form.heroSubtitleEu],
+        ["home.hero_image", form.heroImage],
+      ] as const;
+      for (const [clave, valor] of entries) {
+        const r = await fetch(`${API_BASE}/api/config/${encodeURIComponent(clave)}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ valor: String(valor ?? "") }),
+        });
+        if (!r.ok) throw new Error("save failed");
+      }
+      setNotice("Inicio actualizado correctamente.");
+    } catch {
+      setNotice("Error guardando la configuración de inicio.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-12">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+          <Settings className="w-6 h-6 text-primary" />
+        </div>
+        <h1 className="text-3xl font-bold text-foreground">Editar inicio</h1>
+      </div>
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título H1</label>
+          <input
+            value={form.heroTitle}
+            onChange={(e) => setForm((p) => ({ ...p, heroTitle: e.target.value }))}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            disabled={loading}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Descripción H3</label>
+          <input
+            value={form.heroSubtitle}
+            onChange={(e) => setForm((p) => ({ ...p, heroSubtitle: e.target.value }))}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            disabled={loading}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Descripción H3 (Euskera)</label>
+          <input
+            value={form.heroSubtitleEu}
+            onChange={(e) => setForm((p) => ({ ...p, heroSubtitleEu: e.target.value }))}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            disabled={loading}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Subir foto portada</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={async (e) => {
+              const file = e.target.files?.[0] ?? null;
+              if (!file) return;
+              const image = await readFileAsDataUrl(file);
+              setForm((p) => ({ ...p, heroImage: image }));
+            }}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+            disabled={loading}
+          />
+          {form.heroImage && (
+            <img src={form.heroImage} alt="Vista previa portada" className="mt-3 h-40 w-full object-cover rounded-xl border border-border" />
+          )}
+        </div>
+        {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+        <div className="flex gap-3 pt-2">
+          <Button onClick={saveHome} disabled={saving || loading}>{saving ? "Guardando..." : "Guardar inicio"}</Button>
+          <Button variant="outline" onClick={() => setForm({
+            heroTitle: "",
+            heroSubtitle: "",
+            heroSubtitleEu: "",
+            heroImage: "",
+          })} disabled={saving || loading}>Limpiar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminFooterEditor({ token }: { token: string | null }) {
+  const [form, setForm] = useState({
+    footerLogoText: "",
+    footerLogoTextEu: "",
+    footerAddress: "",
+    footerPhone: "",
+    footerEmail: "",
+    footerWhatsapp: "",
+    footerHours: "",
+    footerMapEmbed: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/config/public`);
+        const d = await r.json();
+        setForm({
+          footerLogoText: String(d?.["footer.logo_text"] ?? ""),
+          footerLogoTextEu: String(d?.["footer.logo_text_eu"] ?? ""),
+          footerAddress: String(d?.["footer.contact.address"] ?? ""),
+          footerPhone: String(d?.["footer.contact.phone"] ?? ""),
+          footerEmail: String(d?.["footer.contact.email"] ?? ""),
+          footerWhatsapp: String(d?.["footer.contact.whatsapp"] ?? ""),
+          footerHours: String(d?.["footer.contact.hours"] ?? ""),
+          footerMapEmbed: String(d?.["footer.contact.map_embed"] ?? ""),
+        });
+      } catch {
+        // keep defaults
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const saveFooter = async () => {
+    if (!token) return;
+    setSaving(true);
+    setNotice("");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+      const entries = [
+        ["footer.logo_text", form.footerLogoText],
+        ["footer.logo_text_eu", form.footerLogoTextEu],
+        ["footer.contact.address", form.footerAddress],
+        ["footer.contact.phone", form.footerPhone],
+        ["footer.contact.email", form.footerEmail],
+        ["footer.contact.whatsapp", form.footerWhatsapp],
+        ["footer.contact.hours", form.footerHours],
+        ["footer.contact.map_embed", form.footerMapEmbed],
+      ] as const;
+      for (const [clave, valor] of entries) {
+        const r = await fetch(`${API_BASE}/api/config/${encodeURIComponent(clave)}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ valor: String(valor ?? "") }),
+        });
+        if (!r.ok) throw new Error("save failed");
+      }
+      const verify = await fetch(`${API_BASE}/api/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!verify.ok) throw new Error("verify failed");
+      const saved = await verify.json();
+      const persistedLogoTextEu = normalizeConfigValue(saved?.["footer.logo_text_eu"] ?? "");
+      const persistedHours = normalizeConfigValue(saved?.["footer.contact.hours"] ?? "");
+      const persistedMapEmbed = normalizeConfigValue(saved?.["footer.contact.map_embed"] ?? "");
+      const inputLogoTextEu = normalizeConfigValue(form.footerLogoTextEu ?? "");
+      const inputHours = normalizeConfigValue(form.footerHours ?? "");
+      const inputMapEmbed = normalizeConfigValue(form.footerMapEmbed ?? "");
+      if (persistedLogoTextEu !== inputLogoTextEu) {
+        setNotice("Guardado parcial: revisa el texto bajo logo (Euskera), no se ha persistido correctamente.");
+        return;
+      }
+      if (persistedHours !== inputHours) {
+        setNotice("Guardado parcial: revisa el campo Horario, no se ha persistido correctamente.");
+        return;
+      }
+      if (persistedMapEmbed !== inputMapEmbed) {
+        setNotice("Guardado parcial: revisa el campo Mapa, no se ha persistido correctamente.");
+        return;
+      }
+      setNotice("Pie y contacto actualizados correctamente.");
+    } catch {
+      setNotice("Error guardando el pie de página.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-12">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+          <Settings className="w-6 h-6 text-primary" />
+        </div>
+        <h1 className="text-3xl font-bold text-foreground">Editor de pie y contacto</h1>
+      </div>
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto bajo logo</label>
+          <input value={form.footerLogoText} onChange={(e) => setForm((p) => ({ ...p, footerLogoText: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto bajo logo (Euskera)</label>
+          <input value={form.footerLogoTextEu} onChange={(e) => setForm((p) => ({ ...p, footerLogoTextEu: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Dirección</label>
+          <textarea value={form.footerAddress} onChange={(e) => setForm((p) => ({ ...p, footerAddress: e.target.value }))} rows={2} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" disabled={loading} />
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Tfno</label>
+            <input value={form.footerPhone} onChange={(e) => setForm((p) => ({ ...p, footerPhone: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Email</label>
+            <input value={form.footerEmail} onChange={(e) => setForm((p) => ({ ...p, footerEmail: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Wp</label>
+          <input value={form.footerWhatsapp} onChange={(e) => setForm((p) => ({ ...p, footerWhatsapp: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Horario</label>
+          <input value={form.footerHours} onChange={(e) => setForm((p) => ({ ...p, footerHours: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Mapa (URL embed)</label>
+          <textarea value={form.footerMapEmbed} onChange={(e) => setForm((p) => ({ ...p, footerMapEmbed: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" disabled={loading} />
+        </div>
+        {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+        <div className="flex gap-3 pt-2">
+          <Button onClick={saveFooter} disabled={saving || loading}>{saving ? "Guardando..." : "Guardar pie"}</Button>
+          <Button variant="outline" onClick={() => setForm({ footerLogoText: "", footerLogoTextEu: "", footerAddress: "", footerPhone: "", footerEmail: "", footerWhatsapp: "", footerHours: "", footerMapEmbed: "" })} disabled={saving || loading}>Limpiar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminPrivacyEditor({ token }: { token: string | null }) {
+  const [form, setForm] = useState({
+    titleEs: "",
+    titleEu: "",
+    bodyEs: "",
+    bodyEu: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/config/public`);
+        const d = await r.json();
+        setForm({
+          titleEs: String(d?.["privacy.policy_title_es"] ?? ""),
+          titleEu: String(d?.["privacy.policy_title_eu"] ?? ""),
+          bodyEs: String(d?.["privacy.policy_body_es"] ?? ""),
+          bodyEu: String(d?.["privacy.policy_body_eu"] ?? ""),
+        });
+      } catch {
+        // keep defaults
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const savePrivacy = async () => {
+    if (!token) return;
+    setSaving(true);
+    setNotice("");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+      const entries = [
+        ["privacy.policy_title_es", form.titleEs],
+        ["privacy.policy_title_eu", form.titleEu],
+        ["privacy.policy_body_es", form.bodyEs],
+        ["privacy.policy_body_eu", form.bodyEu],
+      ] as const;
+      for (const [clave, valor] of entries) {
+        const r = await fetch(`${API_BASE}/api/config/${encodeURIComponent(clave)}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ valor: String(valor ?? "") }),
+        });
+        if (!r.ok) throw new Error("save failed");
+      }
+      setNotice("Política de privacidad actualizada.");
+    } catch {
+      setNotice("Error guardando la política de privacidad.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+          <Settings className="w-6 h-6 text-primary" />
+        </div>
+        <h1 className="text-3xl font-bold text-foreground">Editor política de privacidad</h1>
+      </div>
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título (ES)</label>
+            <input value={form.titleEs} onChange={(e) => setForm((p) => ({ ...p, titleEs: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título (EU)</label>
+            <input value={form.titleEu} onChange={(e) => setForm((p) => ({ ...p, titleEu: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" disabled={loading} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto completo (ES)</label>
+          <textarea value={form.bodyEs} onChange={(e) => setForm((p) => ({ ...p, bodyEs: e.target.value }))} rows={10} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-y" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto completo (EU)</label>
+          <textarea value={form.bodyEu} onChange={(e) => setForm((p) => ({ ...p, bodyEu: e.target.value }))} rows={10} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-y" disabled={loading} />
+        </div>
+        {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+        <div className="flex gap-3 pt-2">
+          <Button onClick={savePrivacy} disabled={saving || loading}>{saving ? "Guardando..." : "Guardar política"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SeccionAdmin() {
   const { t } = useTranslation();
   const [location] = useLocation();
@@ -215,39 +603,10 @@ export default function SeccionAdmin() {
     );
   }
 
-  if (location === "/admin/app") {
-    const settings = [
-      { label: "Nombre de la asociación", labelEu: "Elkartearen izena", value: "Denok Bat" },
-      { label: "Email de contacto", labelEu: "Kontaktu-emaila", value: "info@denokbat.eus" },
-      { label: "Teléfono", labelEu: "Telefonoa", value: "+34 944 000 000" },
-      { label: "Idioma por defecto", labelEu: "Hizkuntza lehenetsia", value: "Euskara" },
-    ];
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-12">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
-            <Settings className="w-6 h-6 text-primary" />
-          </div>
-          <h1 className="text-3xl font-bold text-foreground">App</h1>
-        </div>
-        <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-5">
-          {settings.map((s, i) => (
-            <div key={i}>
-              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">{s.label}</label>
-              <input
-                defaultValue={s.value}
-                className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          ))}
-          <div className="flex gap-3 pt-2">
-            <Button>{t("common.save")}</Button>
-            <Button variant="outline">{t("common.cancel")}</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (location === "/admin/app") return <AdminHomeEditor token={token} />;
+
+  if (location === "/admin/footer") return <AdminFooterEditor token={token} />;
+  if (location === "/admin/privacidad") return <AdminPrivacyEditor token={token} />;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12 text-center">

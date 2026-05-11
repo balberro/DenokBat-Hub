@@ -6,11 +6,60 @@ import {
   actividadesTable,
   pagosTable,
   fiestasTable,
+  sociosTable,
+  usersTable,
 } from "@workspace/db/schema";
 import { requireAuth } from "../middlewares/auth";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, or, ilike } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+async function resolveSocioIdForUser(user: Express.Request["user"]): Promise<number | null> {
+  if (!user) return null;
+  const dbUser = await db.select({
+    id: usersTable.id,
+    socioId: usersTable.socioId,
+    email: usersTable.email,
+  })
+    .from(usersTable)
+    .where(
+      or(
+        eq(usersTable.odooUid, user.uid),
+        eq(usersTable.username, String(user.username ?? "")),
+      ),
+    )
+    .orderBy(desc(usersTable.updatedAt))
+    .limit(1);
+
+  const dbUserId = Number(dbUser[0]?.id ?? 0) || null;
+  const linkedSocioByUser = Number(dbUser[0]?.socioId ?? 0) || null;
+  if (linkedSocioByUser) return linkedSocioByUser;
+
+  if (dbUserId) {
+    const byUsuarioId = await db.select({ id: sociosTable.id })
+      .from(sociosTable)
+      .where(eq(sociosTable.usuarioId, dbUserId))
+      .limit(1);
+    if (byUsuarioId.length > 0) return byUsuarioId[0].id;
+  }
+
+  const byOdooId = await db.select({ id: sociosTable.id })
+    .from(sociosTable)
+    .where(eq(sociosTable.odooId, user.uid))
+    .limit(1);
+  if (byOdooId.length > 0) return byOdooId[0].id;
+
+  const candidateEmail = String(user.email ?? dbUser[0]?.email ?? "").trim();
+  if (candidateEmail) {
+    const byEmail = await db.select({ id: sociosTable.id })
+      .from(sociosTable)
+      .where(ilike(sociosTable.email, candidateEmail))
+      .limit(1);
+    if (byEmail.length > 0) return byEmail[0].id;
+  }
+
+  return null;
+}
 
 // ── GET /inscripciones ────────────────────────────────────────────────────────
 // Devuelve las inscripciones del usuario autenticado (o todas si es admin/contable).
@@ -18,20 +67,26 @@ const router: IRouter = Router();
 router.get("/inscripciones", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const isAdmin = ["administrador", "contable"].includes(user.role);
+  const wantsAdminView = String(req.query.adminView ?? "").toLowerCase() === "1" || String(req.query.adminView ?? "").toLowerCase() === "true";
 
   try {
+    const resolvedSocioId = await resolveSocioIdForUser(req.user);
     let rows;
-    if (isAdmin && req.query.socioId) {
+    if (isAdmin && wantsAdminView && req.query.socioId) {
       rows = await db.select().from(inscripcionesTable)
         .where(eq(inscripcionesTable.socioId, parseInt(String(req.query.socioId), 10)))
         .orderBy(desc(inscripcionesTable.fechaInscripcion));
-    } else if (isAdmin && !req.query.socioId) {
+    } else if (isAdmin && wantsAdminView && !req.query.socioId) {
       rows = await db.select().from(inscripcionesTable)
         .orderBy(desc(inscripcionesTable.fechaInscripcion));
     } else {
-      rows = await db.select().from(inscripcionesTable)
-        .where(eq(inscripcionesTable.socioId, user.uid))
-        .orderBy(desc(inscripcionesTable.fechaInscripcion));
+      if (!resolvedSocioId) {
+        rows = [];
+      } else {
+        rows = await db.select().from(inscripcionesTable)
+          .where(eq(inscripcionesTable.socioId, resolvedSocioId))
+          .orderBy(desc(inscripcionesTable.fechaInscripcion));
+      }
     }
 
     // Enrich with event/fiesta names
@@ -97,9 +152,13 @@ router.get("/inscripciones", requireAuth, async (req, res): Promise<void> => {
 router.post("/inscripciones", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const { eventoId, actividadId, tipo, paradaBus, subactividad, observaciones } = req.body ?? {};
-  const socioId: number = req.body.socioId ?? user.uid;
+  const isAdmin = ["administrador", "contable"].includes(user.role);
+  const resolvedSocioId = await resolveSocioIdForUser(req.user);
+  const socioId: number | null = isAdmin
+    ? Number(req.body.socioId ?? resolvedSocioId ?? 0) || null
+    : resolvedSocioId;
 
-  if (!tipo || (!eventoId && !actividadId)) {
+  if (!tipo || (!eventoId && !actividadId) || !socioId) {
     res.status(400).json({ error: "Datos incompletos" });
     return;
   }
@@ -107,6 +166,11 @@ router.post("/inscripciones", requireAuth, async (req, res): Promise<void> => {
   try {
     let precio: number | null = null;
     let nombreFiesta: string | null = null;
+    const [socio] = await db.select({ odooId: sociosTable.odooId })
+      .from(sociosTable)
+      .where(eq(sociosTable.id, socioId))
+      .limit(1);
+    const canGeneratePago = Number(socio?.odooId ?? 0) > 0;
 
     if (tipo === "fiesta" && eventoId) {
       const [f] = await db.select().from(fiestasTable).where(eq(fiestasTable.id, eventoId)).limit(1);
@@ -146,9 +210,9 @@ router.post("/inscripciones", requireAuth, async (req, res): Promise<void> => {
       estado: "confirmada",
     }).returning();
 
-    // Auto-create pago pendiente if price > 0
+    // Solo se genera pago si el socio existe en Odoo.
     let pago = null;
-    if (precio && precio > 0 && nombreFiesta) {
+    if (canGeneratePago && precio && precio > 0 && nombreFiesta) {
       const [p] = await db.insert(pagosTable).values({
         socioId,
         inscripcionId: inserted.id,
@@ -177,7 +241,8 @@ router.delete("/inscripciones/:id", requireAuth, async (req, res): Promise<void>
 
     // Only owner or admin can cancel
     const isAdmin = ["administrador", "contable"].includes(user.role);
-    if (!isAdmin && insc.socioId !== user.uid) {
+    const resolvedSocioId = await resolveSocioIdForUser(req.user);
+    if (!isAdmin && (!resolvedSocioId || insc.socioId !== resolvedSocioId)) {
       res.status(403).json({ error: "Sin permiso para cancelar esta inscripción" });
       return;
     }

@@ -16,6 +16,12 @@ import pagosRouter from "./pagos";
 import syncRouter from "./sync";
 import configRouter from "./config";
 import adminRouter from "./admin";
+import pulunpesRouter from "./pulunpes";
+import hojasRouter from "./hojas";
+import articulosRouter from "./articulos";
+import galeriaRouter from "./galeria";
+import nosotrosRouter from "./nosotros";
+import perfilRouter from "./perfil";
 
 const router: IRouter = Router();
 
@@ -36,5 +42,11 @@ router.use(pagosRouter);
 router.use(syncRouter);
 router.use(configRouter);
 router.use(adminRouter);
+router.use(pulunpesRouter);
+router.use(hojasRouter);
+router.use(articulosRouter);
+router.use(galeriaRouter);
+router.use(nosotrosRouter);
+router.use(perfilRouter);
 
 export default router;

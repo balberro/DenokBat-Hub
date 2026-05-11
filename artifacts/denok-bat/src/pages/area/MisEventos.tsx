@@ -269,7 +269,7 @@ function ProximaCard({
         {f.fotoUrl ? (
           <div className="h-56 overflow-hidden relative">
             <img src={f.fotoUrl} alt={nombre} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-5">
               <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
                 {lang === "eu" ? "Hurrengoa" : "Próxima"}
@@ -278,7 +278,7 @@ function ProximaCard({
             </div>
           </div>
         ) : (
-          <div className="bg-gradient-to-br from-primary/10 to-background p-6 border-b border-border">
+          <div className="bg-linear-to-br from-primary/10 to-background p-6 border-b border-border">
             <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
               {lang === "eu" ? "Hurrengoa" : "Próxima"}
             </span>
@@ -506,7 +506,7 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
         {latest.fotoUrl && (
           <div className="h-48 overflow-hidden relative">
             <img src={latest.fotoUrl} alt={latestNombre} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
             <span className="absolute bottom-3 left-4 bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full">
               {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
             </span>

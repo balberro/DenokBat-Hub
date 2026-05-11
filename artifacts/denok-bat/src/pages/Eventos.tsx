@@ -132,27 +132,26 @@ function FiestaSectionNav({
   onChange: (s: FiestaSection) => void;
   counts: { proxima: number; previstas: number; realizadas: number };
 }) {
-  const items: { key: FiestaSection; label: string; labelEu: string; color: string }[] = [
-    { key: "proxima",   label: "Próxima",   labelEu: "Hurrengoa",    color: "border-green-400 text-green-700 bg-green-50" },
-    { key: "previstas", label: "Previstas", labelEu: "Aurreikusiak", color: "border-blue-400 text-blue-700 bg-blue-50" },
-    { key: "realizadas",label: "Realizadas",labelEu: "Egindakoak",   color: "border-muted text-muted-foreground bg-muted/20" },
+  const items: { key: FiestaSection; label: string; labelEu: string }[] = [
+    { key: "proxima", label: "Próxima", labelEu: "Hurrengoa" },
+    { key: "previstas", label: "Previstas", labelEu: "Aurreikusiak" },
+    { key: "realizadas", label: "Realizadas", labelEu: "Egindakoak" },
   ];
+
   return (
-    <div className="grid grid-cols-3 gap-3 mb-8">
+    <div className="flex gap-2 mb-6 border-b border-border">
       {items.map(item => (
         <button
           key={item.key}
           onClick={() => onChange(item.key)}
-          className={`rounded-2xl border-2 p-4 text-center transition-all ${
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
             active === item.key
-              ? item.color + " shadow-sm font-bold"
-              : "border-border bg-white text-muted-foreground hover:border-primary/30"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          <p className="text-base font-bold">{lang === "eu" ? item.labelEu : item.label}</p>
-          {counts[item.key] > 0 && (
-            <p className="text-xs mt-0.5 opacity-70">{counts[item.key]} {lang === "eu" ? "fiesta" : "fiesta" + (counts[item.key] > 1 ? "s" : "")}</p>
-          )}
+          {lang === "eu" ? item.labelEu : item.label}
+          {counts[item.key] > 0 ? ` (${counts[item.key]})` : ""}
         </button>
       ))}
     </div>
@@ -165,11 +164,11 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
   const precio = parseFloat(f.precio ?? "0");
 
   return (
-    <div className="bg-white rounded-3xl border border-primary/20 shadow-md overflow-hidden">
+    <div className="bg-white rounded-2xl border border-primary/20 shadow-sm p-6">
       {f.fotoUrl ? (
-        <div className="h-64 sm:h-80 overflow-hidden relative">
+        <div className="h-48 rounded-xl overflow-hidden relative mb-5">
           <img src={f.fotoUrl} alt={nombre} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6">
             <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
               {lang === "eu" ? "Hurrengoa" : "Próxima"}
@@ -178,20 +177,21 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
           </div>
         </div>
       ) : (
-        <div className="bg-gradient-to-br from-primary/10 via-secondary/5 to-background p-8 border-b border-border">
+        <div className="bg-linear-to-br from-primary/10 via-secondary/5 to-background p-6 rounded-xl mb-5">
           <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
             {lang === "eu" ? "Hurrengoa" : "Próxima"}
           </span>
-          <h2 className="text-3xl font-extrabold text-foreground mt-3">{nombre}</h2>
+          <h2 className="text-2xl font-bold text-foreground mt-3">{nombre}</h2>
         </div>
       )}
 
-      <div className="p-6 sm:p-8">
+      <div>
+        {f.fotoUrl && <h2 className="text-2xl font-bold text-foreground mb-3">{nombre}</h2>}
         {descripcion && (
-          <p className="text-muted-foreground mb-6 leading-relaxed">{descripcion}</p>
+          <p className="text-muted-foreground mb-4 leading-relaxed">{descripcion}</p>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
           {f.fecha && (
             <div className="flex gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -266,7 +266,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
         )}
 
         {(f.bus1 || f.bus2) && (
-          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 mb-6">
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 mb-5">
             <div className="flex gap-3">
               <Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
               <div>
@@ -283,7 +283,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
         )}
 
         {f.programa && (
-          <div className="bg-muted/30 rounded-2xl p-5 mb-6">
+          <div className="bg-muted/30 rounded-2xl p-5 mb-5">
             <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-2">
               {lang === "eu" ? "Programa" : "Programa"}
             </p>
@@ -292,7 +292,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
         )}
 
         {f.plazasDisponibles !== null && f.plazasDisponibles > 0 && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
             <Users className="w-4 h-4 text-secondary" />
             <span>{f.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas disponibles"}</span>
           </div>
@@ -326,13 +326,13 @@ function FiestaPrevistas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string })
     );
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {fiestas.map(f => {
         const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
         const descripcion = lang === "eu" ? (f.descripcionEu ?? f.descripcion) : f.descripcion;
         const precio = parseFloat(f.precio ?? "0");
         return (
-          <div key={f.id} className="bg-white rounded-2xl border border-border shadow-sm p-5 sm:p-6 flex gap-5">
+          <div key={f.id} className="bg-white rounded-2xl border border-border shadow-sm p-5 flex gap-4">
             <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex flex-col items-center justify-center shrink-0">
               {f.fecha ? (
                 <>
@@ -403,13 +403,13 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
   const latestDescripcion = lang === "eu" ? (latest.descripcionEu ?? latest.descripcion) : latest.descripcion;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Latest realized with memory */}
-      <div className="bg-white rounded-3xl border border-border shadow-md overflow-hidden">
+      <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
         {latest.fotoUrl && (
-          <div className="h-56 overflow-hidden relative">
+          <div className="h-48 overflow-hidden relative">
             <img src={latest.fotoUrl} alt={latestNombre} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-t from-black/50 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-5">
               <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full">
                 {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
@@ -417,13 +417,13 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
             </div>
           </div>
         )}
-        <div className="p-6 sm:p-8">
+        <div className="p-6">
           {!latest.fotoUrl && (
             <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full inline-block mb-4">
               {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
             </span>
           )}
-          <h3 className="text-2xl font-extrabold text-foreground mb-1">{latestNombre}</h3>
+          <h3 className="text-xl font-bold text-foreground mb-1">{latestNombre}</h3>
           <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-4">
             {latest.fecha && (
               <span className="flex items-center gap-1">
@@ -606,7 +606,7 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
           <ChevronLeft className="w-4 h-4" /> {lang === "eu" ? "Itzuli" : "Volver"}
         </button>
         <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
-          <div className="bg-gradient-to-br from-secondary/10 to-background p-8">
+          <div className="bg-linear-to-br from-secondary/10 to-background p-8">
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${ESTADO_EXCURSION[detail.estado]?.color}`}>
               {lang === "eu" ? detail.estado : ESTADO_EXCURSION[detail.estado]?.label}
             </span>
@@ -719,7 +719,7 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
           <ChevronLeft className="w-4 h-4" /> {lang === "eu" ? "Itzuli" : "Volver"}
         </button>
         <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
-          <div className="bg-gradient-to-br from-secondary/10 to-background p-8">
+          <div className="bg-linear-to-br from-secondary/10 to-background p-8">
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${ESTADO_EXCURSION[detail.estado]?.color}`}>
               {ESTADO_EXCURSION[detail.estado]?.label}
             </span>
@@ -827,7 +827,7 @@ export default function Eventos() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <div className="bg-gradient-to-b from-secondary/10 to-background py-16 border-b border-secondary/10">
+      <div className="bg-linear-to-b from-secondary/10 to-background py-16 border-b border-secondary/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-5xl font-extrabold text-foreground mb-4">
             {lang === "eu" ? "Ekitaldiak" : "Eventos"}

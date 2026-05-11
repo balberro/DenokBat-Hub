@@ -18,6 +18,7 @@ import AdminTextos from "./area/AdminTextos";
 import AdminDB from "./area/AdminDB";
 import SeccionContable from "./area/SeccionContable";
 import SeccionAdmin from "./area/SeccionAdmin";
+import AdminNosotros from "./area/AdminNosotros";
 
 const allowedRoles: Record<string, string[]> = {
   "/perfil":              ["usuario","socio","delegado","directivo","contable","administrador"],
@@ -29,6 +30,7 @@ const allowedRoles: Record<string, string[]> = {
   "/inscripciones-grupo": ["delegado"],
   "/admin/eventos":       ["directivo","administrador"],
   "/admin/actividades":   ["directivo","administrador"],
+  "/admin/nosotros":      ["directivo","administrador"],
   "/admin/socios":        ["contable","administrador"],
   "/admin/contabilidad":  ["contable","administrador"],
   "/admin/subvenciones":  ["contable","administrador"],
@@ -39,6 +41,8 @@ const allowedRoles: Record<string, string[]> = {
   "/admin/proveedores":   ["administrador"],
   "/admin/odoo":          ["administrador"],
   "/admin/app":           ["administrador"],
+  "/admin/footer":        ["administrador"],
+  "/admin/privacidad":    ["administrador"],
   "/admin/database":      ["administrador"],
 };
 
@@ -52,6 +56,7 @@ const components: Record<string, React.ComponentType> = {
   "/inscripciones-grupo": InscripcionesGrupo,
   "/admin/eventos":       AdminEventos,
   "/admin/actividades":   AdminActividades,
+  "/admin/nosotros":      AdminNosotros,
   "/admin/socios":        GestionSocios,
   "/admin/contabilidad":  SeccionContable,
   "/admin/subvenciones":  SeccionContable,
@@ -62,6 +67,8 @@ const components: Record<string, React.ComponentType> = {
   "/admin/proveedores":   SeccionAdmin,
   "/admin/odoo":          SeccionAdmin,
   "/admin/app":           SeccionAdmin,
+  "/admin/footer":        SeccionAdmin,
+  "/admin/privacidad":    SeccionAdmin,
   "/admin/database":      AdminDB,
 };
 

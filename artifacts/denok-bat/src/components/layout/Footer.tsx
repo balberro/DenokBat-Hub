@@ -1,9 +1,40 @@
 import { useTranslation } from "@/i18n/translations";
-import { MapPin, Phone, Mail } from "lucide-react";
+import { MapPin, Phone, Mail, MessageCircle } from "lucide-react";
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export function Footer() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const [cfg, setCfg] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/config/public`);
+        const d = await r.json();
+        if (!active || !r.ok) return;
+        setCfg({
+          logoText: String(d?.["footer.logo_text"] ?? ""),
+          logoTextEu: String(d?.["footer.logo_text_eu"] ?? ""),
+          address: String(d?.["footer.contact.address"] ?? ""),
+          phone: String(d?.["footer.contact.phone"] ?? ""),
+          email: String(d?.["footer.contact.email"] ?? ""),
+          whatsapp: String(d?.["footer.contact.whatsapp"] ?? ""),
+        });
+      } catch {
+        // keep defaults
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
+
+  const footerLogoText = lang === "eu"
+    ? (cfg.logoTextEu || "")
+    : (cfg.logoText || "");
 
   return (
     <footer className="bg-foreground text-white pt-16 pb-8">
@@ -17,7 +48,7 @@ export function Footer() {
               className="h-16 w-auto mb-6 bg-white p-2 rounded-xl"
             />
             <p className="text-gray-300 text-lg">
-              {t('home.hero_subtitle')}
+              {footerLogoText}
             </p>
           </div>
 
@@ -26,15 +57,19 @@ export function Footer() {
             <ul className="space-y-4 text-lg text-gray-300">
               <li className="flex items-start gap-3">
                 <MapPin className="w-6 h-6 text-primary shrink-0 mt-1" />
-                <span>Calle Mayor 12, Planta Baja<br/>20001 Donostia-San Sebastián</span>
+                <span className="whitespace-pre-line">{cfg.address || "-"}</span>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="w-6 h-6 text-primary shrink-0" />
-                <span>943 123 456</span>
+                <span>{cfg.phone || "-"}</span>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="w-6 h-6 text-primary shrink-0" />
-                <span>contacto@denokbat.org</span>
+                <span>{cfg.email || "-"}</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <MessageCircle className="w-6 h-6 text-primary shrink-0" />
+                <span>{cfg.whatsapp || "-"}</span>
               </li>
             </ul>
           </div>
@@ -52,11 +87,11 @@ export function Footer() {
         </div>
         
         <div className="border-t border-gray-700 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-400">
-          <p>© {new Date().getFullYear()} Denok Bat. Todos los derechos reservados.</p>
+          <p>© {new Date().getFullYear()} Denok Bat. {t("footer.rights_reserved")}</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-white transition-colors">Aviso Legal</a>
-            <a href="#" className="hover:text-white transition-colors">Privacidad</a>
-            <a href="#" className="hover:text-white transition-colors">Cookies</a>
+            <a href="#" className="hover:text-white transition-colors">{t("footer.legal_notice")}</a>
+            <Link href="/privacidad" className="hover:text-white transition-colors">{t("footer.privacy")}</Link>
+            <a href="#" className="hover:text-white transition-colors">{t("footer.cookies")}</a>
           </div>
         </div>
       </div>

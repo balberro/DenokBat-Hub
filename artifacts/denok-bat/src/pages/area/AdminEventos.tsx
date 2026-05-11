@@ -628,6 +628,17 @@ type ViewState =
 export default function AdminEventos() {
   const { t, lang } = useTranslation();
   const token = useStore(s => s.token);
+  const setUser = useStore(s => s.setUser);
+  const setToken = useStore(s => s.setToken);
+
+  const handleUnauthorized = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem("denok-bat-storage");
+    localStorage.removeItem("denok-bat-token");
+    alert("Tu sesión ha expirado. Vuelve a iniciar sesión.");
+    window.location.href = "/login";
+  };
 
   const [tab, setTab]     = useState<Tab>("excursiones");
   const [view, setView]   = useState<ViewState>({ type: "list" });
@@ -687,8 +698,13 @@ export default function AdminEventos() {
       const method = f.id === 0 ? "POST" : "PUT";
       const r = await fetch(url, { method, headers: authHeaders(token), body: JSON.stringify(f) });
       if (!r.ok) {
+        if (r.status === 401) {
+          handleUnauthorized();
+          return;
+        }
         const err = await r.json().catch(() => ({}));
-        alert("Error guardando: " + (err.error ?? r.statusText));
+        const detail = err?.detalle ? `\nDetalle: ${String(err.detalle)}` : "";
+        alert("Error guardando: " + (err.error ?? r.statusText) + detail);
         return;
       }
       const saved: FiestaRow = await r.json();
@@ -700,7 +716,11 @@ export default function AdminEventos() {
 
   const deleteFiesta = async (id: number) => {
     if (!confirm("¿Eliminar esta fiesta?")) return;
-    await fetch(`${API}/fiestas/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    const r = await fetch(`${API}/fiestas/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    if (r.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     setFiestas(prev => prev.filter(x => x.id !== id));
   };
 
@@ -713,8 +733,13 @@ export default function AdminEventos() {
       const method = ex.id === 0 ? "POST" : "PUT";
       const r = await fetch(url, { method, headers: authHeaders(token), body: JSON.stringify(payload) });
       if (!r.ok) {
+        if (r.status === 401) {
+          handleUnauthorized();
+          return;
+        }
         const err = await r.json().catch(() => ({}));
-        alert("Error guardando: " + (err.error ?? r.statusText));
+        const detail = err?.detalle ? `\nDetalle: ${String(err.detalle)}` : "";
+        alert("Error guardando: " + (err.error ?? r.statusText) + detail);
         return;
       }
       const saved: ExcursionRow = await r.json();
@@ -726,7 +751,11 @@ export default function AdminEventos() {
 
   const deleteExcursion = async (id: number) => {
     if (!confirm("¿Eliminar esta excursión?")) return;
-    await fetch(`${API}/excursiones/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    const r = await fetch(`${API}/excursiones/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    if (r.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     setExcursiones(prev => prev.filter(x => x.id !== id));
   };
 
@@ -737,8 +766,13 @@ export default function AdminEventos() {
       const method = v.id === 0 ? "POST" : "PUT";
       const r = await fetch(url, { method, headers: authHeaders(token), body: JSON.stringify(v) });
       if (!r.ok) {
+        if (r.status === 401) {
+          handleUnauthorized();
+          return;
+        }
         const err = await r.json().catch(() => ({}));
-        alert("Error guardando: " + (err.error ?? r.statusText));
+        const detail = err?.detalle ? `\nDetalle: ${String(err.detalle)}` : "";
+        alert("Error guardando: " + (err.error ?? r.statusText) + detail);
         return;
       }
       const saved: ViajeRow = await r.json();
@@ -750,7 +784,11 @@ export default function AdminEventos() {
 
   const deleteViaje = async (id: number) => {
     if (!confirm("¿Eliminar este viaje?")) return;
-    await fetch(`${API}/viajes/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    const r = await fetch(`${API}/viajes/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    if (r.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     setViajes(prev => prev.filter(x => x.id !== id));
   };
 

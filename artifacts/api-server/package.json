@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development tsx ./src/index.ts",
+    "dev": "NODE_ENV=development tsx watch ./src/index.ts",
     "build": "tsx ./build.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "start": "NODE_ENV=production node ./dist/index.cjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "import:genero": "tsx ./src/scripts/import-genero-corrections.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

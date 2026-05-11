@@ -61,7 +61,9 @@ export default function Login() {
             </div>
 
             {loginMutation.isError && (
-              <p className="text-sm text-red-600 text-center">{t('common.error')}</p>
+              <p className="text-sm text-red-600 text-center">
+                {loginMutation.errorMessage || t('common.error')}
+              </p>
             )}
 
             <Button 

@@ -18,9 +18,7 @@ const ROLE_LABELS: Record<string, { es: string; eu: string }> = {
 };
 
 const roleItems: Record<string, LinkItem[]> = {
-  usuario: [
-    { href: "/perfil", label: "menu.perfil" },
-  ],
+  usuario: [],
   socio: [
     { href: "/mis-eventos",         label: "menu.mis_eventos" },
     { href: "/mis-inscripciones",   label: "menu.mis_inscripciones" },
@@ -34,6 +32,7 @@ const roleItems: Record<string, LinkItem[]> = {
   directivo: [
     { href: "/admin/eventos",       label: "menu.admin_eventos" },
     { href: "/admin/actividades",   label: "menu.admin_actividades" },
+    { href: "/admin/nosotros",      label: "menu.admin_nosotros" },
   ],
   contable: [
     { href: "/admin/socios",        label: "menu.gestion_socios" },
@@ -48,6 +47,8 @@ const roleItems: Record<string, LinkItem[]> = {
     { href: "/admin/textos",        label: "menu.textos" },
     { href: "/admin/odoo",          label: "menu.odoo" },
     { href: "/admin/app",           label: "menu.app" },
+    { href: "/admin/footer",        label: "menu.footer" },
+    { href: "/admin/privacidad",    label: "menu.privacy_admin" },
     { href: "/admin/database",      label: "menu.database" },
   ],
 };

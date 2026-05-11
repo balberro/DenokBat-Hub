@@ -3,6 +3,7 @@ import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { Calendar, Tag, Euro, Bus, Loader2, AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
 import { useStore } from "@/store/use-store";
+import { Link } from "wouter";
 
 const API = "/api";
 
@@ -173,12 +174,17 @@ export default function MisInscripciones() {
                     {pendingPago && (
                       <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-center gap-2">
                         <Euro className="w-4 h-4 text-amber-600 shrink-0" />
-                        <p className="text-xs text-amber-700 font-medium">
-                          {lang === "eu" ? "Ordainketa zain: " : "Pago pendiente: "}
-                          <span className="font-bold">{parseFloat(pendingPago.importe)}€</span>
-                          {" — "}
-                          {lang === "eu" ? "Efektiboan" : "en efectivo"}
-                        </p>
+                        <div className="flex-1 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-amber-700 font-medium">
+                            {lang === "eu" ? "Ordainketa zain: " : "Pago pendiente: "}
+                            <span className="font-bold">{parseFloat(pendingPago.importe)}€</span>
+                          </p>
+                          <Link href={`/mis-pagos?inscripcionId=${item.id}&pagoId=${pendingPago.id}&importe=${encodeURIComponent(String(pendingPago.importe ?? ""))}`}>
+                            <Button size="sm" className="h-7 text-xs px-3">
+                              {lang === "eu" ? "Ordaindu" : "Pagar"}
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     )}
                   </div>

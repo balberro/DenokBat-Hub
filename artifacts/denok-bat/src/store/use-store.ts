@@ -33,6 +33,21 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'denok-bat-storage',
+      version: 2,
+      migrate: (persistedState: unknown) => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return persistedState as AppState;
+        }
+        return {
+          ...(persistedState as AppState),
+          isDemoMode: false,
+        };
+      },
+      partialize: (state) => ({
+        lang: state.lang,
+        user: state.user,
+        token: state.token,
+      }),
     }
   )
 );

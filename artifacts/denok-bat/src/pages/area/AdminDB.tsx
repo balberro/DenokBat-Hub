@@ -20,6 +20,16 @@ type QueryResult = {
   error?: string;
 };
 
+async function parseJsonSafe(response: Response): Promise<any> {
+  const raw = await response.text();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { error: raw };
+  }
+}
+
 function authHeaders(token: string | null) {
   return {
     "Content-Type": "application/json",
@@ -30,11 +40,12 @@ function authHeaders(token: string | null) {
 // ─── Sidebar: tables list ─────────────────────────────────────────────────────
 
 function TableSidebar({
-  token, selected, onSelect,
+  token, selected, onSelect, refreshToken,
 }: {
   token: string | null;
   selected: string | null;
   onSelect: (name: string) => void;
+  refreshToken: number;
 }) {
   const [tables, setTables] = useState<DBTable[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +60,7 @@ function TableSidebar({
     setLoading(false);
   }, [token]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshToken]);
 
   const [columns, setColumns] = useState<Column[]>([]);
   const [colsFor, setColsFor] = useState<string | null>(null);
@@ -229,6 +240,7 @@ export default function AdminDB() {
   const [running, setRunning] = useState(false);
   const [writeMode, setWriteMode] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [tablesRefreshToken, setTablesRefreshToken] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const runQuery = useCallback(async (query?: string) => {
@@ -242,9 +254,17 @@ export default function AdminDB() {
         headers: authHeaders(token),
         body: JSON.stringify({ sql: toRun, mode: writeMode ? "write" : "read" }),
       });
-      const d = await r.json();
+      const d = await parseJsonSafe(r);
       if (!r.ok) {
-        setResult({ rows: [], fields: [], rowCount: 0, command: "", elapsed: 0, error: d.error ?? d.detalle ?? "Error desconocido" });
+        // Mostramos primero el detalle SQL real devuelto por backend.
+        setResult({
+          rows: [],
+          fields: [],
+          rowCount: 0,
+          command: "",
+          elapsed: 0,
+          error: d.detalle ?? d.error ?? `Error HTTP ${r.status}`,
+        });
       } else {
         setResult(d);
       }
@@ -270,6 +290,40 @@ export default function AdminDB() {
     textareaRef.current?.focus();
   };
 
+  const bootstrapNosotrosTables = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const r = await fetch(`${API}/admin/db/bootstrap-nosotros`, {
+        method: "POST",
+        headers: authHeaders(token),
+      });
+      const d = await parseJsonSafe(r);
+      if (!r.ok) {
+        setResult({
+          rows: [],
+          fields: [],
+          rowCount: 0,
+          command: "",
+          elapsed: 0,
+          error: d.detalle ?? d.error ?? `Error HTTP ${r.status} creando tablas`,
+        });
+      } else {
+        setResult({
+          rows: [{ message: d.message ?? "Tablas de Nosotros preparadas" }],
+          fields: [{ name: "message" }],
+          rowCount: 1,
+          command: "BOOTSTRAP",
+          elapsed: 0,
+        });
+        setTablesRefreshToken((v) => v + 1);
+      }
+    } catch (e) {
+      setResult({ rows: [], fields: [], rowCount: 0, command: "", elapsed: 0, error: String(e) });
+    }
+    setRunning(false);
+  };
+
   return (
     <div className="max-w-full mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
@@ -285,7 +339,7 @@ export default function AdminDB() {
       <div className="flex gap-4 items-start">
         {/* Sidebar */}
         <div className="w-56 shrink-0 bg-white rounded-2xl border border-border shadow-sm p-3 overflow-y-auto max-h-[75vh]">
-          <TableSidebar token={token} selected={selectedTable} onSelect={handleTableSelect} />
+          <TableSidebar token={token} selected={selectedTable} onSelect={handleTableSelect} refreshToken={tablesRefreshToken} />
         </div>
 
         {/* Main area */}
@@ -301,6 +355,12 @@ export default function AdminDB() {
                 {q.label}
               </button>
             ))}
+            <button
+              onClick={bootstrapNosotrosTables}
+              className="text-xs px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary font-semibold transition-all"
+            >
+              Crear tablas Nosotros
+            </button>
           </div>
 
           {/* Editor */}

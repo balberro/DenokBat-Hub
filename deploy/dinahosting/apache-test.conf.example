@@ -1,0 +1,14 @@
+<VirtualHost *:80>
+  ServerName azkendantza.denokbat.com
+
+  ProxyPreserveHost On
+  ProxyRequests Off
+
+  RequestHeader set X-Forwarded-Proto "http"
+
+  ProxyPass / http://127.0.0.1:8080/
+  ProxyPassReverse / http://127.0.0.1:8080/
+
+  ErrorLog ${APACHE_LOG_DIR}/denokbat-test-error.log
+  CustomLog ${APACHE_LOG_DIR}/denokbat-test-access.log combined
+</VirtualHost>

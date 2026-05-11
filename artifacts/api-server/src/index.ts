@@ -1,19 +1,15 @@
 import app from "./app";
 
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+// En hosting con Passenger el puerto puede ser 0 (socket efimero).
+// Mantiene compatibilidad con despliegues donde PORT viene definido.
+const rawPort = process.env["PORT"] ?? "0";
 
 const port = Number(rawPort);
 
-if (Number.isNaN(port) || port <= 0) {
+if (Number.isNaN(port) || port < 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
 app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+  console.log(`Server listening on port ${port === 0 ? "ephemeral (0)" : port}`);
 });

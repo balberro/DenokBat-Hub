@@ -41,11 +41,24 @@ function getOverrides(): Translations {
   }
 }
 
+function normalizeOverrides(source: Translations): Translations {
+  const normalized: Translations = {};
+  for (const [key, entry] of Object.entries(source)) {
+    const base = baseDictionary[key];
+    if (!base) continue;
+    if (entry.es !== base.es || entry.eu !== base.eu) {
+      normalized[key] = entry;
+    }
+  }
+  return normalized;
+}
+
 export default function AdminTextos() {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [edits, setEdits] = useState<Translations>(() => getOverrides());
+  const [savedEdits, setSavedEdits] = useState<Translations>(() => normalizeOverrides(getOverrides()));
+  const [edits, setEdits] = useState<Translations>(() => normalizeOverrides(getOverrides()));
   const [saved, setSaved] = useState(false);
 
   const allKeys = Object.keys(baseDictionary);
@@ -91,16 +104,10 @@ export default function AdminTextos() {
   };
 
   const handleSaveAll = () => {
-    // Only save keys that actually differ from base
-    const realOverrides: Translations = {};
-    for (const [key, entry] of Object.entries(edits)) {
-      const base = baseDictionary[key];
-      if (!base) continue;
-      if (entry.es !== base.es || entry.eu !== base.eu) {
-        realOverrides[key] = entry;
-      }
-    }
+    const realOverrides = normalizeOverrides(edits);
     saveOverrides(realOverrides);
+    setSavedEdits(realOverrides);
+    setEdits(realOverrides);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -108,17 +115,25 @@ export default function AdminTextos() {
   const handleResetAll = () => {
     if (!confirm("¿Restablecer todos los textos al valor original?")) return;
     setEdits({});
+    setSavedEdits({});
     saveOverrides({});
   };
 
   const isModified = (key: string) => {
+    const base = baseDictionary[key];
+    const current = edits[key] ?? base;
+    const savedValue = savedEdits[key] ?? base;
+    return current.es !== savedValue.es || current.eu !== savedValue.eu;
+  };
+
+  const modifiedCount = allKeys.filter(isModified).length;
+
+  const isOverridden = (key: string) => {
     const e = edits[key];
     if (!e) return false;
     const base = baseDictionary[key];
     return e.es !== base.es || e.eu !== base.eu;
   };
-
-  const modifiedCount = Object.keys(edits).filter(isModified).length;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12">
@@ -200,6 +215,7 @@ export default function AdminTextos() {
               const esVal = current?.es ?? base.es;
               const euVal = current?.eu ?? base.eu;
               const modified = isModified(key);
+              const overridden = isOverridden(key);
 
               return (
                 <tr key={key} className={`hover:bg-muted/10 transition-colors ${modified ? "bg-yellow-50/50" : ""}`}>
@@ -215,7 +231,7 @@ export default function AdminTextos() {
                       value={esVal}
                       onChange={(e) => handleChange(key, 'es', e.target.value)}
                       rows={esVal.length > 60 ? 3 : 1}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${modified && esVal !== base.es ? "border-yellow-400 bg-yellow-50" : "border-border bg-muted/20"}`}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${overridden && esVal !== base.es ? "border-yellow-400 bg-yellow-50" : "border-border bg-muted/20"}`}
                     />
                   </td>
                   <td className="px-4 py-3 align-top">
@@ -223,7 +239,7 @@ export default function AdminTextos() {
                       value={euVal}
                       onChange={(e) => handleChange(key, 'eu', e.target.value)}
                       rows={euVal.length > 60 ? 3 : 1}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${modified && euVal !== base.eu ? "border-yellow-400 bg-yellow-50" : "border-border bg-muted/20"}`}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${overridden && euVal !== base.eu ? "border-yellow-400 bg-yellow-50" : "border-border bg-muted/20"}`}
                     />
                   </td>
                   <td className="px-4 py-3 align-top">

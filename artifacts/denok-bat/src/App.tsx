@@ -13,6 +13,7 @@ import QuienesSomos from "@/pages/QuienesSomos";
 import Eventos from "@/pages/Eventos";
 import Divulgacion from "@/pages/Divulgacion";
 import Contacto from "@/pages/Contacto";
+import Privacidad from "@/pages/Privacidad";
 import Sugerencias from "@/pages/Sugerencias";
 import AreaPrivada from "@/pages/AreaPrivada";
 import NotFound from "@/pages/not-found";
@@ -37,6 +38,7 @@ function Router() {
       <Route path="/servicios" component={Services} />
       <Route path="/sugerencias" component={Sugerencias} />
       <Route path="/contacto" component={Contacto} />
+      <Route path="/privacidad" component={Privacidad} />
       <Route path="/login" component={Login} />
       <Route path="/panel" component={Dashboard} />
 
@@ -50,6 +52,7 @@ function Router() {
       <Route path="/inscripciones-grupo" component={AreaPrivada} />
       <Route path="/admin/eventos" component={AreaPrivada} />
       <Route path="/admin/actividades" component={AreaPrivada} />
+      <Route path="/admin/nosotros" component={AreaPrivada} />
       <Route path="/admin/socios" component={AreaPrivada} />
       <Route path="/admin/contabilidad" component={AreaPrivada} />
       <Route path="/admin/subvenciones" component={AreaPrivada} />
@@ -60,6 +63,8 @@ function Router() {
       <Route path="/admin/proveedores" component={AreaPrivada} />
       <Route path="/admin/odoo" component={AreaPrivada} />
       <Route path="/admin/app" component={AreaPrivada} />
+      <Route path="/admin/footer" component={AreaPrivada} />
+      <Route path="/admin/privacidad" component={AreaPrivada} />
       <Route path="/admin/database" component={AreaPrivada} />
 
       <Route component={NotFound} />

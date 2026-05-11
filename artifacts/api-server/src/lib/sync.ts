@@ -1,7 +1,7 @@
 import { db } from "@workspace/db";
 import { sociosTable, eventosTable, actividadesTable, pagosTable } from "@workspace/db/schema";
 import { odooCall } from "./odoo";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export type SyncResult = {
   modelo: string;
@@ -11,13 +11,114 @@ export type SyncResult = {
 };
 
 export async function syncSocios(): Promise<SyncResult> {
+    const nullable = (value: unknown): string | null => {
+      if (value === undefined || value === null) return null;
+      if (typeof value === "boolean") return null;
+      const s = String(value).trim();
+      return s.length > 0 ? s : null;
+    };
+    const isHonorificoByBirthdate = (fechaNacimiento: string | null): boolean => {
+      if (!fechaNacimiento) return false;
+      const birth = new Date(`${fechaNacimiento}T00:00:00`);
+      if (Number.isNaN(birth.getTime())) return false;
+      const now = new Date();
+      let age = now.getFullYear() - birth.getFullYear();
+      const monthDiff = now.getMonth() - birth.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age--;
+      return age >= 85;
+    };
+
   try {
-    const partners = (await odooCall("res.partner", "search_read", [
-      [["customer_rank", ">", 0]],
-    ], {
-      fields: ["id", "name", "email", "phone", "street", "vat", "birthdate_date", "ref", "gender", "active"],
-      limit: 500,
-    })) as Record<string, unknown>[];
+    const columnResult = await db.execute(sql`
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'db_socios'
+    `);
+    const sociosColumns = new Map<string, string>();
+    for (const row of columnResult.rows as Array<{ column_name?: string; data_type?: string }>) {
+      const columnName = String(row.column_name ?? "");
+      const dataType = String(row.data_type ?? "");
+      if (columnName) sociosColumns.set(columnName, dataType);
+    }
+    const numeroSocioIsInteger = sociosColumns.get("numero_socio") === "integer";
+    const hasMembershipEstado = sociosColumns.has("membership_estado");
+    const hasMembershipDesde = sociosColumns.has("membership_desde");
+    const hasMembershipHasta = sociosColumns.has("membership_hasta");
+    const hasMembershipCuota = sociosColumns.has("membership_cuota");
+
+    let membershipByPartner = new Map<number, {
+      estado: string | null;
+      desde: string | null;
+      hasta: string | null;
+      cuota: string | null;
+    }>();
+    try {
+      const membershipLines = (await odooCall("membership.membership_line", "search_read", [
+        [],
+      ], {
+        fields: ["partner", "state", "date_from", "date_to", "membership_amount", "create_date"],
+        limit: 2000,
+        order: "create_date desc",
+      })) as Record<string, unknown>[];
+      if (Array.isArray(membershipLines)) {
+        for (const line of membershipLines) {
+          const partnerField = line.partner as unknown;
+          const partnerId = Array.isArray(partnerField) ? Number(partnerField[0] ?? 0) : 0;
+          if (!partnerId || membershipByPartner.has(partnerId)) continue;
+          membershipByPartner.set(partnerId, {
+            estado: line.state ? String(line.state) : null,
+            desde: line.date_from ? String(line.date_from) : null,
+            hasta: line.date_to ? String(line.date_to) : null,
+            cuota: line.membership_amount != null ? String(line.membership_amount) : null,
+          });
+        }
+      }
+    } catch {
+      // En algunas instalaciones el modelo membership.membership_line no está disponible.
+      membershipByPartner = new Map();
+    }
+
+    const partnerFields = [
+      "id",
+      "name",
+      "email",
+      "phone",
+      "street",
+      "city",
+      "state_id",
+      "vat",
+      "birthdate_date",
+      "ref",
+      "gender",
+      "active",
+      "customer_rank",
+      "category_id",
+      "membership_state",
+      "membership_start",
+      "membership_stop",
+      "membership_cancel",
+      "membership_amount",
+    ];
+    let selectedFields = [...partnerFields];
+    let partners: Record<string, unknown>[] = [];
+    for (let attempt = 0; attempt < partnerFields.length; attempt += 1) {
+      try {
+        partners = (await odooCall("res.partner", "search_read", [
+          [["customer_rank", ">", 0]],
+        ], {
+          fields: selectedFields,
+          limit: 500,
+        })) as Record<string, unknown>[];
+        break;
+      } catch (err) {
+        const msg = String(err ?? "");
+        const invalidFieldMatch = msg.match(/Invalid field '([^']+)' on 'res\.partner'/);
+        const invalidField = invalidFieldMatch?.[1];
+        if (!invalidField) throw err;
+        selectedFields = selectedFields.filter((f) => f !== invalidField);
+        if (selectedFields.length === 0) throw err;
+      }
+    }
 
     if (!Array.isArray(partners) || partners.length === 0) {
       return { modelo: "socios", procesados: 0, errores: 0, mensaje: "No se encontraron socios en Odoo" };
@@ -25,23 +126,80 @@ export async function syncSocios(): Promise<SyncResult> {
 
     let procesados = 0;
     let errores = 0;
+    let firstErrorMessage: string | null = null;
 
     for (const p of partners) {
       try {
         const odooId = Number(p.id);
-        const data = {
+        const line = membershipByPartner.get(odooId);
+        const membershipEstado =
+          (p.membership_state ? String(p.membership_state) : null)
+          ?? line?.estado
+          ?? null;
+        const membershipDesde =
+          (p.membership_start ? String(p.membership_start) : null)
+          ?? line?.desde
+          ?? null;
+        const membershipHasta =
+          (p.membership_stop ? String(p.membership_stop) : null)
+          ?? (p.membership_cancel ? String(p.membership_cancel) : null)
+          ?? line?.hasta
+          ?? null;
+        const membershipCuotaRaw =
+          p.membership_amount != null ? String(p.membership_amount) : (line?.cuota ?? null);
+        const membershipCuotaNumber = Number(membershipCuotaRaw);
+        const fechaNacimiento = p.birthdate_date ? String(p.birthdate_date) : null;
+        const categoryIds = Array.isArray(p.category_id) ? (p.category_id as number[]).map((x) => Number(x)).filter(Boolean) : [];
+        let tipologia: "fundadora" | "directiva" | "delegada" | "honorifica" | "numeraria" | "colaboradora" = "numeraria";
+        if (Array.isArray(p.category_id) && categoryIds.length > 0) {
+          try {
+            const tags = (await odooCall("res.partner.category", "search_read", [
+              [["id", "in", categoryIds]],
+            ], { fields: ["name"], limit: 50 })) as Record<string, unknown>[];
+            const tagNames = tags.map((t) => String(t.name ?? "").trim().toLowerCase());
+            if (tagNames.some((n) => n.includes("fundadora"))) tipologia = "fundadora";
+            else if (tagNames.some((n) => n.includes("directiva"))) tipologia = "directiva";
+            else if (tagNames.some((n) => n.includes("delegada"))) tipologia = "delegada";
+            else if (tagNames.some((n) => n.includes("honorifica") || n.includes("honorífica"))) tipologia = "honorifica";
+            else if (tagNames.some((n) => n.includes("colaboradora"))) tipologia = "colaboradora";
+            else if (tagNames.some((n) => n.includes("numeraria"))) tipologia = "numeraria";
+          } catch {
+            // sin tags tipologia en Odoo, usamos fallback local por edad
+          }
+        }
+        if (tipologia === "numeraria" && isHonorificoByBirthdate(fechaNacimiento)) {
+          tipologia = "honorifica";
+        }
+        const customerRank = Number(p.customer_rank ?? 0);
+        const estado = p.active
+          ? (customerRank > 0 ? "activo" : "solicitante")
+          : "baja";
+        const numeroSocioRaw = nullable(p.ref);
+        const numeroSocioValue = numeroSocioIsInteger
+          ? ((Number.isFinite(Number(numeroSocioRaw)) ? Number(numeroSocioRaw) : null) as number | null)
+          : numeroSocioRaw;
+
+        const data: Record<string, unknown> = {
           odooId,
           nombre: String(p.name ?? ""),
-          email: p.email ? String(p.email) : null,
-          telefono: p.phone ? String(p.phone) : null,
-          direccion: p.street ? String(p.street) : null,
-          dni: p.vat ? String(p.vat) : null,
-          fechaNacimiento: p.birthdate_date ? String(p.birthdate_date) : null,
-          numeroSocio: p.ref ? String(p.ref) : null,
-          genero: p.gender === "male" ? "M" : p.gender === "female" ? "F" : null,
-          estado: p.active ? "activo" : "inactivo",
+          email: nullable(p.email),
+          telefono: nullable(p.phone),
+          direccion: nullable(p.street),
+          poblacion: nullable(p.city),
+          provincia: Array.isArray(p.state_id) ? nullable(p.state_id[1]) : null,
+          dni: nullable(p.vat),
+          fechaNacimiento: nullable(fechaNacimiento),
+          tipoSocio: tipologia === "honorifica" ? "honorifico" : "ordinario",
+          tipologia,
+          numeroSocio: numeroSocioValue,
+          genero: p.gender === "male" ? "H" : p.gender === "female" ? "F" : null,
+          estado,
           odooSyncedAt: new Date(),
         };
+        if (hasMembershipEstado) data.membershipEstado = nullable(membershipEstado);
+        if (hasMembershipDesde) data.membershipDesde = nullable(membershipDesde);
+        if (hasMembershipHasta) data.membershipHasta = nullable(membershipHasta);
+        if (hasMembershipCuota) data.membershipCuota = Number.isFinite(membershipCuotaNumber) ? String(membershipCuotaNumber) : null;
 
         const existing = await db.select({ id: sociosTable.id }).from(sociosTable)
           .where(eq(sociosTable.odooId, odooId)).limit(1);
@@ -53,12 +211,18 @@ export async function syncSocios(): Promise<SyncResult> {
           await db.insert(sociosTable).values(data);
         }
         procesados++;
-      } catch {
+      } catch (err) {
         errores++;
+        if (!firstErrorMessage) firstErrorMessage = String(err);
       }
     }
 
-    return { modelo: "socios", procesados, errores };
+    return {
+      modelo: "socios",
+      procesados,
+      errores,
+      ...(firstErrorMessage ? { mensaje: firstErrorMessage } : {}),
+    };
   } catch (err) {
     return { modelo: "socios", procesados: 0, errores: 1, mensaje: String(err) };
   }
@@ -169,7 +333,7 @@ export async function syncActividades(): Promise<SyncResult> {
 
 export async function syncPagos(): Promise<SyncResult> {
   try {
-    const invoices = (await odooCall("account.move", "search_read", [
+    const invoices = (await odooCall("membership_membership_line", "search_read", [
       [["move_type", "in", ["out_invoice", "out_refund"]], ["state", "!=", "cancel"]],
     ], {
       fields: ["id", "name", "partner_id", "amount_total", "payment_state", "invoice_date", "invoice_date_due", "ref"],

@@ -35,7 +35,7 @@ export default function Sugerencias() {
 
   return (
     <div className="pb-20">
-      <section className="py-16 bg-gradient-to-b from-secondary/10 to-background">
+      <section className="py-16 bg-linear-to-b from-secondary/10 to-background">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="w-20 h-20 bg-secondary/20 rounded-full flex items-center justify-center mx-auto mb-6">
             <Lightbulb className="w-10 h-10 text-secondary" />

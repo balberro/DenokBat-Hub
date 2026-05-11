@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev:web on folder open",
+      "type": "shell",
+      "command": "if command -v pnpm >/dev/null 2>&1; then FORCE_RESTART=1 pnpm dev:web; elif command -v corepack >/dev/null 2>&1; then FORCE_RESTART=1 corepack pnpm dev:web; else FORCE_RESTART=1 npm run dev:web; fi",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      },
+      "isBackground": true
+    }
+  ]
+}

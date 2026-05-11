@@ -1,0 +1,23 @@
+/**
+ * Copia este archivo como `app.local.js` en el servidor (nunca lo subas a Git).
+ * Ajusta valores reales y reinicia la app.
+ */
+
+process.env.NODE_ENV = process.env.NODE_ENV || "production";
+process.env.PORT = process.env.PORT || "0";
+
+process.env.DATABASE_URL =
+  "postgres://USUARIO:CONTRASEÑA@pgsql03.dinaserver.com:5432/NOMBRE_BD";
+
+// Certificado TLS autofirmado en PostgreSQL Dinahosting
+process.env.DATABASE_SSL_REJECT_UNAUTHORIZED = "false";
+
+process.env.JWT_SECRET = "GENERA_UN_SECRETO_LARGO";
+process.env.ALLOWED_ORIGINS = "https://tu-subdominio.denokbat.com";
+
+// Opcional Odoo
+// process.env.ODOO_URL = "";
+// process.env.ODOO_DB = "";
+// process.env.ODOO_USERNAME = "";
+// process.env.ODOO_PASSWORD = "";
+// process.env.ODOO_API_KEY = "";

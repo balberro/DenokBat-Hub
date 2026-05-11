@@ -1,0 +1,4 @@
+numero_socio,nombre,apellidos,dni,genero,email,telefono,direccion,poblacion,provincia,fecha_nacimiento,fecha_fallecimiento,fecha_alta,estado,tipologia,grupo_id,avatar_url
+000001,Ana,Garcia Lopez,12345678A,F,ana@example.com,600111222,"Calle Mayor 12","Bilbao","Bizkaia",1938-04-21,,2010-01-15,activo,honorifica,,
+000002,Jon,Etxeberria Ruiz,87654321B,M,jon@example.com,600333444,"Avenida Navarra 8","Vitoria-Gasteiz","Araba",1972-11-03,,2015-09-01,activo,numeraria,2,
+000003,Maite,Arrieta Sanz,11223344C,F,maite@example.com,600555666,"Plaza Nueva 3","Donostia","Gipuzkoa",1945-07-30,,2001-05-20,solicitante,colaboradora,,
