@@ -23,6 +23,11 @@ export BASE_PATH="${DEPLOY_BASE_PATH:-/}"
 export API_PROXY_TARGET="${DEPLOY_API_PROXY_TARGET:-http://127.0.0.1:3001}"
 pnpm run build:test
 
+# Asegura rutas de subida necesarias en runtime (avatares, etc.)
+echo "==> ensure uploads directories"
+mkdir -p "$ROOT/artifacts/api-server/uploads/perfil"
+chmod -R 775 "$ROOT/artifacts/api-server/uploads" 2>/dev/null || true
+
 if [ -d "$ROOT/tmp" ]; then
   echo "==> Passenger: touch tmp/restart.txt"
   touch "$ROOT/tmp/restart.txt"
