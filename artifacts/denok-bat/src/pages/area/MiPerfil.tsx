@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getUserRoles, useStore } from "@/store/use-store";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { User, Camera, CheckCircle, Eye, EyeOff } from "lucide-react";
+import { User, Camera, CheckCircle } from "lucide-react";
 
 export default function MiPerfil() {
   const user = useStore((s) => s.user);
@@ -13,8 +13,6 @@ export default function MiPerfil() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [form, setForm] = useState({
     username: "",
     nombre: "",
@@ -28,6 +26,8 @@ export default function MiPerfil() {
   const roles = user ? getUserRoles(user) : [];
   const isUsuario = roles.includes("usuario");
   const userUsername = (user as { username?: string } | null)?.username ?? "";
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarPreview = String(form.avatarUrl || user?.avatar || "").trim();
 
   useEffect(() => {
     if (!user) return;
@@ -60,11 +60,30 @@ export default function MiPerfil() {
           telefono: String(d?.telefono ?? d?.phone ?? prev.telefono ?? ""),
           avatarUrl: String(d?.avatar_url ?? prev.avatarUrl ?? ""),
         }));
+
+        const snap = useStore.getState().user;
+        if (snap) {
+          const apiAvatar = String(d?.avatar_url ?? "").trim();
+          const nextName = String(d?.nombre ?? snap.name ?? "");
+          const nextEmail = d?.email != null ? String(d.email) : snap.email;
+          const norm = (v: string | null | undefined) => String(v ?? "").trim();
+          const sameAvatar = norm(snap.avatar) === apiAvatar;
+          const sameName = nextName === snap.name;
+          const sameEmail = String(nextEmail ?? "") === String(snap.email ?? "");
+          if (!sameAvatar || !sameName || !sameEmail) {
+            useStore.getState().setUser({
+              ...snap,
+              name: nextName,
+              email: nextEmail,
+              avatar: apiAvatar || null,
+            });
+          }
+        }
       } catch {
         // no-op
       }
     })();
-  }, [user, token, isUsuario]);
+  }, [token, user?.id, userUsername, isUsuario]);
 
   const fileToDataUrl = async (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -136,14 +155,24 @@ export default function MiPerfil() {
       {/* Avatar */}
       <div className="flex items-center gap-6 mb-10 p-6 bg-white rounded-2xl border border-border shadow-sm">
         <div className="relative">
-          <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-            {user?.avatar ? (
-              <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
+          <button
+            type="button"
+            className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden ring-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={() => avatarFileInputRef.current?.click()}
+            aria-label={t("perfil.change_photo")}
+          >
+            {avatarPreview ? (
+              <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
             ) : (
               <User className="w-12 h-12 text-primary" />
             )}
-          </div>
-          <button className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow">
+          </button>
+          <button
+            type="button"
+            className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow pointer-events-none"
+            tabIndex={-1}
+            aria-hidden
+          >
             <Camera className="w-4 h-4 text-white" />
           </button>
         </div>
@@ -153,6 +182,7 @@ export default function MiPerfil() {
           <label className="text-sm text-primary hover:underline mt-1 cursor-pointer inline-block">
             {t("perfil.change_photo")}
             <input
+              ref={avatarFileInputRef}
               type="file"
               accept="image/*"
               className="hidden"
@@ -165,6 +195,7 @@ export default function MiPerfil() {
                 } catch {
                   setNotice("No se pudo leer la imagen seleccionada.");
                 }
+                e.target.value = "";
               }}
             />
           </label>
@@ -200,39 +231,23 @@ export default function MiPerfil() {
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1.5">{t("form.password")}</label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    className="h-12 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="h-12"
+                />
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1.5">{t("form.confirm_password")}</label>
-                <div className="relative">
-                  <Input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={form.confirmPassword}
-                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
-                    className="h-12 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={form.confirmPassword}
+                  onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                  className="h-12"
+                />
               </div>
             </>
           ) : (

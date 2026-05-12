@@ -58,3 +58,7 @@ app.local.js
 denokbat_local.sql
 *_local.sql
 *.dump
+
+# API: ficheros subidos en runtime (avatares, galería, etc.)
+artifacts/api-server/uploads/
+artifacts/api-server/artifacts/

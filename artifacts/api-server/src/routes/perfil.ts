@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { pool } from "@workspace/db";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 const router: IRouter = Router();
 
@@ -32,6 +34,32 @@ async function hasColumn(columnName: string): Promise<boolean> {
     [columnName],
   );
   return Boolean(result.rows[0]?.ok);
+}
+
+/** Convierte data URL a fichero bajo /uploads/perfil/; deja URLs ya públicas sin cambios. */
+async function persistAvatarIfNeeded(value: string | null): Promise<string | null> {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (!trimmed.startsWith("data:")) return trimmed;
+
+  const match = trimmed.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return trimmed;
+
+  const mime = match[1];
+  const base64 = match[2];
+  let ext = "bin";
+  if (mime === "image/png") ext = "png";
+  else if (mime === "image/jpeg" || mime === "image/jpg") ext = "jpg";
+  else if (mime === "image/webp") ext = "webp";
+  else if (mime === "image/gif") ext = "gif";
+
+  const fileName = `avatar-${Date.now()}-${randomUUID()}.${ext}`;
+  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/perfil");
+  await mkdir(uploadsDir, { recursive: true });
+  const absPath = path.join(uploadsDir, fileName);
+  await writeFile(absPath, Buffer.from(base64, "base64"));
+  return `/uploads/perfil/${fileName}`;
 }
 
 function splitName(fullName: string): { nombre: string; apellidos: string } {
@@ -94,6 +122,23 @@ router.get("/perfil/me", requireAuth, async (req, res): Promise<void> => {
         // Si no existe db_socios o falla consulta, no bloqueamos perfil.
       }
     }
+
+    const rawAvatar = row.avatar_url ? String(row.avatar_url).trim() : "";
+    if (rawAvatar.startsWith("data:")) {
+      try {
+        const migrated = await persistAvatarIfNeeded(rawAvatar);
+        if (migrated && !migrated.startsWith("data:")) {
+          const userId = Number(row.id ?? 0);
+          if (userId > 0) {
+            await pool.query(`UPDATE db_users SET avatar_url = $1, updated_at = now() WHERE id = $2`, [migrated, userId]);
+            row.avatar_url = migrated;
+          }
+        }
+      } catch {
+        // Si falla la migración, devolvemos el valor almacenado tal cual.
+      }
+    }
+
     res.json({
       ...row,
       nombre: split.nombre || nombreRaw,
@@ -159,6 +204,7 @@ router.put("/perfil/me", requireAuth, async (req, res): Promise<void> => {
 
     const passwordHash = createHash("sha256").update(password).digest("hex");
     const nombreToStore = nombre;
+    const avatarStored = await persistAvatarIfNeeded(avatarUrl);
     const setClauses = [
       "username = $1",
       "nombre = $2",
@@ -182,7 +228,7 @@ router.put("/perfil/me", requireAuth, async (req, res): Promise<void> => {
       apellidos,
       email,
       telefono,
-      avatarUrl,
+      avatarStored,
       passwordHash,
       uid,
       usernameToken,
