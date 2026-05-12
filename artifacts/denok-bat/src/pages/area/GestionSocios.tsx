@@ -28,6 +28,40 @@ type SocioRow = {
   provincia?: string | null;
 };
 
+type SolicitudRow = {
+  id: number;
+  nombre: string;
+  apellidos: string | null;
+  email: string | null;
+  telefono: string | null;
+  estado: string;
+  usuarioId: number | null;
+  usuarioUsername: string | null;
+  solicitudRevisionMensaje: string | null;
+  solicitudRevisionCampos: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+/** Claves alineadas con Mi perfil / API revisión */
+const SOLICITUD_REVISION_FIELDS: { key: string; labelKey: string }[] = [
+  { key: "nombre", labelKey: "common.name" },
+  { key: "apellidos", labelKey: "perfil.surname" },
+  { key: "email", labelKey: "form.email" },
+  { key: "telefono", labelKey: "common.phone" },
+  { key: "direccion", labelKey: "common.address" },
+  { key: "poblacion", labelKey: "common.city" },
+  { key: "provincia", labelKey: "common.province" },
+  { key: "dni", labelKey: "perfil.dni" },
+  { key: "fecha_nacimiento", labelKey: "perfil.birth_date" },
+  { key: "genero", labelKey: "common.gender" },
+  { key: "foto", labelKey: "perfil.membership_photo_label" },
+  { key: "dni_anverso", labelKey: "perfil.membership_dni_front" },
+  { key: "dni_reverso", labelKey: "perfil.membership_dni_back" },
+  { key: "cuota_importe", labelKey: "perfil.membership_fee_title" },
+  { key: "metodo_pago", labelKey: "perfil.membership_payment_method" },
+];
+
 type CargoRow = {
   id: number;
   codigo: string;
@@ -161,7 +195,12 @@ export default function GestionSocios() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<SocioForm>(EMPTY_FORM);
   const [notice, setNotice] = useState("");
-  const [subsection, setSubsection] = useState<"socios" | "contable" | "historico">("socios");
+  const [subsection, setSubsection] = useState<"socios" | "solicitudes" | "contable" | "historico">("socios");
+  const [solicitudes, setSolicitudes] = useState<SolicitudRow[]>([]);
+  const [solicitudesLoading, setSolicitudesLoading] = useState(false);
+  const [solicitudExpandId, setSolicitudExpandId] = useState<number | null>(null);
+  const [revisionCamposPick, setRevisionCamposPick] = useState<string[]>([]);
+  const [revisionMensajePick, setRevisionMensajePick] = useState("");
   const [cargos, setCargos] = useState<CargoRow[]>([]);
   const [historico, setHistorico] = useState<HistoricoCargoRow[]>([]);
   const [historicoLoading, setHistoricoLoading] = useState(false);
@@ -206,6 +245,70 @@ export default function GestionSocios() {
       reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
       reader.readAsDataURL(file);
     });
+  };
+
+  const loadSolicitudes = async () => {
+    if (!token) return;
+    setSolicitudesLoading(true);
+    try {
+      const r = await fetch(`${API}/socios/solicitudes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const errBody = await r.json().catch(() => null);
+        throw new Error(String(errBody?.error ?? errBody?.detalle ?? `HTTP ${r.status}`));
+      }
+      const d = await r.json();
+      setSolicitudes(Array.isArray(d?.items) ? (d.items as SolicitudRow[]) : []);
+    } catch (err) {
+      setSolicitudes([]);
+      setNotice(err instanceof Error ? err.message : "Error cargando solicitudes");
+    } finally {
+      setSolicitudesLoading(false);
+    }
+  };
+
+  const patchSolicitudResolucion = async (
+    socioId: number,
+    accion: "admitir" | "rechazar" | "pendiente_datos",
+    extra?: { campos?: string[]; mensaje?: string },
+  ) => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/socios/${socioId}/solicitud`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          accion,
+          campos_revision: extra?.campos,
+          mensaje_revision: extra?.mensaje,
+        }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) {
+        throw new Error(String(d?.error ?? d?.detalle ?? `HTTP ${r.status}`));
+      }
+      setNotice(
+        accion === "admitir"
+          ? t("socios.solicitud.notice.admitted")
+          : accion === "rechazar"
+            ? t("socios.solicitud.notice.rejected")
+            : t("socios.solicitud.notice.revision_requested"),
+      );
+      setSolicitudExpandId(null);
+      setRevisionCamposPick([]);
+      setRevisionMensajePick("");
+      await loadSolicitudes();
+      await loadSocios();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : t("socios.solicitud.notice.error"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadSocios = async () => {
@@ -308,13 +411,17 @@ export default function GestionSocios() {
     setNotice("Filtros limpiados");
   };
 
-  const normalizeEstadoValue = (v: string | null | undefined): "activo" | "solicitante" | "baja" | "" => {
+  const normalizeEstadoValue = (
+    v: string | null | undefined,
+  ): "activo" | "solicitante" | "baja" | "pendiente_datos" | "rechazado" | "" => {
     const raw = String(v ?? "").toLowerCase().trim();
     if (!raw) return "";
     if (raw === "activo" || raw === "active") return "activo";
     if (raw === "solicitante" || raw === "pending" || raw === "pendiente") return "solicitante";
+    if (raw === "pendiente_datos") return "pendiente_datos";
+    if (raw === "rechazado") return "rechazado";
     if (raw === "baja" || raw === "inactivo" || raw === "inactive") return "baja";
-    return "baja";
+    return "";
   };
 
   const normalizeGeneroValue = (v: string | null | undefined): "H" | "M" | "F" | "" => {
@@ -771,12 +878,34 @@ export default function GestionSocios() {
             <Edit className="w-4 h-4" />
             Editar seleccionado
           </Button>
-          <Button className="gap-2" onClick={openCreate}><Plus className="w-4 h-4" />{t("socios.new")}</Button>
+          <Button
+            className="gap-2"
+            onClick={() => {
+              setSubsection("solicitudes");
+              void loadSolicitudes();
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            {t("socios.new")}
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={openCreate}>
+            {t("socios.solicitud.manual_create")}
+          </Button>
         </div>
       </div>
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex gap-2 flex-wrap">
         <Button variant={subsection === "socios" ? "default" : "outline"} size="sm" onClick={() => setSubsection("socios")}>
           {t("socios.tabs.list")}
+        </Button>
+        <Button
+          variant={subsection === "solicitudes" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setSubsection("solicitudes");
+            void loadSolicitudes();
+          }}
+        >
+          {t("socios.tabs.solicitudes")}
         </Button>
         <Button variant={subsection === "contable" ? "default" : "outline"} size="sm" onClick={() => { setSubsection("contable"); void loadHistorico({ ...contableFilters }); }}>
           {t("socios.tabs.query_positions")}
@@ -785,6 +914,161 @@ export default function GestionSocios() {
           {t("socios.tabs.assign_positions")}
         </Button>
       </div>
+
+      {subsection === "solicitudes" && (
+        <div className="mb-8 rounded-2xl border border-border bg-white p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">{t("socios.solicitud.title")}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t("socios.solicitud.subtitle")}</p>
+          </div>
+          {solicitudesLoading ? (
+            <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+          ) : solicitudes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("socios.solicitud.empty")}</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left">
+                  <tr>
+                    <th className="p-3 font-semibold">{t("common.name")}</th>
+                    <th className="p-3 font-semibold">{t("form.email")}</th>
+                    <th className="p-3 font-semibold">{t("common.phone")}</th>
+                    <th className="p-3 font-semibold">{t("common.status")}</th>
+                    <th className="p-3 font-semibold">{t("socios.solicitud.user_login")}</th>
+                    <th className="p-3 font-semibold w-[280px]">{t("socios.solicitud.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {solicitudes.map((s) => {
+                    const ne = normalizeEstadoValue(s.estado);
+                    const estadoLabel =
+                      ne === "pendiente_datos"
+                        ? t("socios.form.status.pendiente_datos")
+                        : ne === "solicitante"
+                          ? t("socios.form.status.solicitante")
+                          : s.estado;
+                    return (
+                      <tr key={s.id} className="border-t border-border">
+                        <td className="p-3">
+                          {`${s.nombre} ${s.apellidos ?? ""}`.trim()}
+                          {s.solicitudRevisionMensaje && ne === "pendiente_datos" ? (
+                            <p className="text-xs text-amber-800 mt-1 max-w-xs truncate" title={s.solicitudRevisionMensaje}>
+                              {s.solicitudRevisionMensaje}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="p-3">{s.email ?? "—"}</td>
+                        <td className="p-3">{s.telefono ?? "—"}</td>
+                        <td className="p-3">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                              ne === "pendiente_datos"
+                                ? "bg-amber-100 text-amber-900"
+                                : "bg-blue-100 text-blue-900"
+                            }`}
+                          >
+                            {estadoLabel}
+                          </span>
+                        </td>
+                        <td className="p-3 text-muted-foreground">{s.usuarioUsername ?? "—"}</td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={saving}
+                              onClick={() => {
+                                void patchSolicitudResolucion(s.id, "admitir");
+                              }}
+                            >
+                              {t("socios.solicitud.admit")}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="h-8 text-xs"
+                              disabled={saving}
+                              onClick={() => {
+                                if (window.confirm(t("socios.solicitud.confirm_reject"))) {
+                                  void patchSolicitudResolucion(s.id, "rechazar");
+                                }
+                              }}
+                            >
+                              {t("socios.solicitud.reject")}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={saving}
+                              onClick={() => {
+                                setSolicitudExpandId(s.id);
+                                setRevisionCamposPick([]);
+                                setRevisionMensajePick("");
+                              }}
+                            >
+                              {t("socios.solicitud.request_fix")}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {solicitudExpandId != null && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+              <p className="font-medium text-foreground">{t("socios.solicitud.revision_panel_title")}</p>
+              <p className="text-xs text-muted-foreground">{t("socios.solicitud.revision_panel_hint")}</p>
+              <div className="grid sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                {SOLICITUD_REVISION_FIELDS.map((f) => (
+                  <label key={f.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={revisionCamposPick.includes(f.key)}
+                      onChange={(e) => {
+                        setRevisionCamposPick((prev) =>
+                          e.target.checked ? [...prev, f.key] : prev.filter((k) => k !== f.key),
+                        );
+                      }}
+                    />
+                    <span>{t(f.labelKey)}</span>
+                  </label>
+                ))}
+              </div>
+              <textarea
+                className="w-full min-h-[88px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder={t("socios.solicitud.mensaje_placeholder")}
+                value={revisionMensajePick}
+                onChange={(e) => setRevisionMensajePick(e.target.value)}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={saving || revisionCamposPick.length === 0}
+                  onClick={() => {
+                    void patchSolicitudResolucion(solicitudExpandId, "pendiente_datos", {
+                      campos: revisionCamposPick,
+                      mensaje: revisionMensajePick,
+                    });
+                  }}
+                >
+                  {t("socios.solicitud.send_revision")}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSolicitudExpandId(null)}>
+                  {t("common.cancel")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {subsection === "contable" && (
         <div className="mb-8 rounded-2xl border border-border bg-white p-4 space-y-4">
@@ -1040,7 +1324,9 @@ export default function GestionSocios() {
             <input type="date" value={form.fechaAlta} onChange={(e) => setForm((p) => ({ ...p, fechaAlta: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background" />
             <select value={form.estado} onChange={(e) => setForm((p) => ({ ...p, estado: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background">
               <option value="solicitante">{t("socios.form.status.solicitante")}</option>
+              <option value="pendiente_datos">{t("socios.form.status.pendiente_datos")}</option>
               <option value="activo">{t("socios.form.status.active")}</option>
+              <option value="rechazado">{t("socios.form.status.rechazado")}</option>
               <option value="baja">{t("socios.form.status.baja")}</option>
             </select>
             <input value={form.grupoId} onChange={(e) => setForm((p) => ({ ...p, grupoId: e.target.value }))} placeholder={t("socios.form.group_id_optional")} className="px-3 py-2 rounded-lg border border-border bg-background" />
@@ -1345,6 +1631,8 @@ export default function GestionSocios() {
                     <option value="">Todos</option>
                     <option value="activo">{t("socios.form.status.active")}</option>
                     <option value="solicitante">{t("socios.form.status.solicitante")}</option>
+                    <option value="pendiente_datos">{t("socios.form.status.pendiente_datos")}</option>
+                    <option value="rechazado">{t("socios.form.status.rechazado")}</option>
                     <option value="baja">{t("socios.form.status.baja")}</option>
                   </select>
                 </div>
@@ -1421,18 +1709,32 @@ export default function GestionSocios() {
                   {(() => {
                     const normalizedEstado = normalizeEstadoValue(s.estado);
                     return (
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                    normalizedEstado === "activo"
-                      ? "bg-green-100 text-green-700"
-                      : normalizedEstado === "solicitante"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-red-100 text-red-600"
-                  }`}>
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      normalizedEstado === "activo"
+                        ? "bg-green-100 text-green-700"
+                        : normalizedEstado === "solicitante"
+                          ? "bg-blue-100 text-blue-700"
+                          : normalizedEstado === "pendiente_datos"
+                            ? "bg-amber-100 text-amber-900"
+                            : normalizedEstado === "rechazado"
+                              ? "bg-red-100 text-red-700"
+                              : normalizedEstado === "baja"
+                                ? "bg-red-100 text-red-600"
+                                : "bg-muted text-muted-foreground"
+                    }`}
+                  >
                     {normalizedEstado === "activo"
                       ? t("socios.form.status.active")
                       : normalizedEstado === "solicitante"
                         ? t("socios.form.status.solicitante")
-                        : t("socios.form.status.baja")}
+                        : normalizedEstado === "pendiente_datos"
+                          ? t("socios.form.status.pendiente_datos")
+                          : normalizedEstado === "rechazado"
+                            ? t("socios.form.status.rechazado")
+                            : normalizedEstado === "baja"
+                              ? t("socios.form.status.baja")
+                              : String(s.estado ?? "-")}
                   </span>
                     );
                   })()}

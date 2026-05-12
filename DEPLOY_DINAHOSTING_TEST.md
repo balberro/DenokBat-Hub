@@ -1,5 +1,28 @@
 # Despliegue de test en Dinahosting
 
+## Actualizar el entorno de test (nueva versión)
+
+En el servidor, desde la **raíz del repositorio** (ajusta la ruta a la tuya):
+
+```bash
+bash ./scripts/update-dinahosting-test.sh
+```
+
+Equivalente con pnpm (misma raíz del repo):
+
+```bash
+pnpm run update:dinahosting-test
+```
+
+Hace en orden: `git pull --ff-only`, `pnpm install --frozen-lockfile`, `pnpm run build:test`, crea carpetas de subidas, `touch tmp/restart.txt` (Passenger) y, si existe la app **`denokbat-test`** en PM2, `pm2 reload denokbat-test --update-env`.
+
+- Sin PM2 (solo Passenger): el script sigue siendo válido; el aviso de PM2 se puede ignorar.
+- Sin `tmp/`: crea la carpeta en el panel de Dinahosting o manualmente `mkdir -p tmp` en la raíz del proyecto para que Passenger reciba el reinicio.
+
+La versión de esta release de test está alineada con los campos **`version`** de los `package.json` del workspace (`workspace`, `@workspace/denok-bat`, `@workspace/api-server`).
+
+---
+
 Esta guía deja la app funcionando como **un único proceso Node.js**:
 - API (`/api`, `/uploads`)
 - Frontend estático (SPA React/Vite)

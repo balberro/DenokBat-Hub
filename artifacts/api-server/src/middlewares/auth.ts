@@ -33,7 +33,8 @@ export function requireRole(...roles: string[]) {
       res.status(401).json({ error: "No autenticado" });
       return;
     }
-    if (!roles.includes(req.user.role)) {
+    const userRoles = Array.isArray(req.user.roles) && req.user.roles.length > 0 ? req.user.roles : [req.user.role];
+    if (!roles.some((role) => userRoles.includes(role))) {
       res.status(403).json({ error: "Acceso no autorizado para este rol" });
       return;
     }

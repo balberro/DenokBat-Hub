@@ -35,6 +35,7 @@ const roleItems: Record<string, LinkItem[]> = {
     { href: "/admin/nosotros",      label: "menu.admin_nosotros" },
   ],
   contable: [
+    { href: "/admin/datos-asociacion", label: "menu.asociacion_datos" },
     { href: "/admin/socios",        label: "menu.gestion_socios" },
     { href: "/admin/contabilidad",  label: "menu.gestion_contable" },
     { href: "/admin/subvenciones",  label: "menu.subvenciones" },
@@ -42,6 +43,7 @@ const roleItems: Record<string, LinkItem[]> = {
     { href: "/admin/documentacion", label: "menu.documentacion" },
   ],
   administrador: [
+    { href: "/admin/datos-asociacion", label: "menu.asociacion_datos" },
     { href: "/admin/roles",         label: "menu.roles" },
     { href: "/admin/proveedores",   label: "menu.proveedores" },
     { href: "/admin/textos",        label: "menu.textos" },

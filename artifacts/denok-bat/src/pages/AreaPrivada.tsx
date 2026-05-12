@@ -12,6 +12,7 @@ import MiGrupo from "./area/MiGrupo";
 import InscripcionesGrupo from "./area/InscripcionesGrupo";
 import AdminEventos from "./area/AdminEventos";
 import AdminActividades from "./area/AdminActividades";
+import DatosAsociacion from "./area/DatosAsociacion";
 import GestionSocios from "./area/GestionSocios";
 import AdminRoles from "./area/AdminRoles";
 import AdminTextos from "./area/AdminTextos";
@@ -32,6 +33,7 @@ const allowedRoles: Record<string, string[]> = {
   "/admin/actividades":   ["directivo","administrador"],
   "/admin/nosotros":      ["directivo","administrador"],
   "/admin/socios":        ["contable","administrador"],
+  "/admin/datos-asociacion": ["contable", "administrador"],
   "/admin/contabilidad":  ["contable","administrador"],
   "/admin/subvenciones":  ["contable","administrador"],
   "/admin/divulgacion":   ["contable","administrador"],
@@ -58,6 +60,7 @@ const components: Record<string, React.ComponentType> = {
   "/admin/actividades":   AdminActividades,
   "/admin/nosotros":      AdminNosotros,
   "/admin/socios":        GestionSocios,
+  "/admin/datos-asociacion": DatosAsociacion,
   "/admin/contabilidad":  SeccionContable,
   "/admin/subvenciones":  SeccionContable,
   "/admin/divulgacion":   SeccionContable,

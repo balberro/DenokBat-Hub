@@ -53,6 +53,7 @@ function Router() {
       <Route path="/admin/eventos" component={AreaPrivada} />
       <Route path="/admin/actividades" component={AreaPrivada} />
       <Route path="/admin/nosotros" component={AreaPrivada} />
+      <Route path="/admin/datos-asociacion" component={AreaPrivada} />
       <Route path="/admin/socios" component={AreaPrivada} />
       <Route path="/admin/contabilidad" component={AreaPrivada} />
       <Route path="/admin/subvenciones" component={AreaPrivada} />

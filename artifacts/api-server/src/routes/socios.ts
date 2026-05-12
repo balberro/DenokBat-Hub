@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { pagosTable, sociosTable, usersTable } from "@workspace/db/schema";
+import { getPrimaryRole, getUserRoles, setUserRoles } from "../lib/roles";
 import { requireAuth } from "../middlewares/auth";
 import { eq, ilike, or, desc } from "drizzle-orm";
 import { odooCall } from "../lib/odoo";
@@ -10,6 +11,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 const router: IRouter = Router();
+
+/** Alineado con `/admin/socios` (AreaPrivada): contable puede listar socios y tramitar solicitudes de alta. */
+const SOCIOS_GESTION_ROLES = ["administrador", "directivo", "delegado", "contable"] as const;
 
 function nullIfEmpty(value: unknown): string | null {
   if (value === undefined || value === null) return null;
@@ -58,11 +62,32 @@ function normalizeTipologia(input: unknown, fechaNacimiento: string | null): "fu
   return "numeraria";
 }
 
-function normalizeEstado(input: unknown): "solicitante" | "activo" | "baja" {
+function normalizeEstado(input: unknown): "solicitante" | "activo" | "baja" | "pendiente_datos" | "rechazado" {
   const raw = String(input ?? "").trim().toLowerCase();
   if (raw === "activo") return "activo";
   if (raw === "baja" || raw === "inactivo") return "baja";
+  if (raw === "pendiente_datos" || raw === "pendiente_completar" || raw === "pendiente completar datos") {
+    return "pendiente_datos";
+  }
+  if (raw === "rechazado" || raw === "rechazo") return "rechazado";
   return "solicitante";
+}
+
+function isEstadoPendienteRevision(estado: string): boolean {
+  const e = String(estado ?? "").trim().toLowerCase();
+  return e === "solicitante" || e === "pendiente_datos";
+}
+
+async function ensureSolicitudRevisionColumns(): Promise<void> {
+  try {
+    await pool.query(`
+      ALTER TABLE db_socios
+      ADD COLUMN IF NOT EXISTS solicitud_revision_campos text,
+      ADD COLUMN IF NOT EXISTS solicitud_revision_mensaje text
+    `);
+  } catch {
+    //
+  }
 }
 
 function normalizeGeneroForStorage(input: unknown): "H" | "F" | "N" | null {
@@ -201,7 +226,7 @@ async function saveMembershipInvoiceLocal(socioId: number, payload: MembershipIn
 
 router.get("/socios", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  if (!["administrador", "directivo", "delegado"].includes(user.role)) {
+  if (!(SOCIOS_GESTION_ROLES as readonly string[]).includes(user.role)) {
     res.status(403).json({ error: "No autorizado" });
     return;
   }
@@ -263,9 +288,185 @@ router.get("/socios", requireAuth, async (req, res): Promise<void> => {
   }
 });
 
+/** Listado de solicitudes de alta (estado solicitante o pendiente de datos). */
+router.get("/socios/solicitudes", requireAuth, async (_req, res): Promise<void> => {
+  const user = _req.user!;
+  if (!(SOCIOS_GESTION_ROLES as readonly string[]).includes(user.role)) {
+    res.status(403).json({ error: "No autorizado" });
+    return;
+  }
+
+  await ensureSolicitudRevisionColumns();
+
+  try {
+    const r = await pool.query(
+      `
+      SELECT
+        s.id,
+        s.nombre,
+        s.apellidos,
+        s.email,
+        s.telefono,
+        s.estado,
+        s.usuario_id,
+        s.created_at,
+        s.updated_at,
+        s.solicitud_revision_mensaje,
+        s.solicitud_revision_campos,
+        u.username AS usuario_username
+      FROM db_socios s
+      LEFT JOIN db_users u ON u.id = s.usuario_id
+      WHERE lower(trim(COALESCE(s.estado, ''))) IN ('solicitante', 'pendiente_datos')
+      ORDER BY s.updated_at DESC NULLS LAST, s.id DESC
+      `,
+    );
+    res.json({
+      items: r.rows.map((row) => ({
+        id: Number(row.id ?? 0),
+        nombre: String(row.nombre ?? ""),
+        apellidos: row.apellidos != null ? String(row.apellidos) : null,
+        email: row.email != null ? String(row.email) : null,
+        telefono: row.telefono != null ? String(row.telefono) : null,
+        estado: String(row.estado ?? "").trim(),
+        usuarioId: row.usuario_id != null ? Number(row.usuario_id) : null,
+        usuarioUsername: row.usuario_username != null ? String(row.usuario_username) : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        solicitudRevisionMensaje: row.solicitud_revision_mensaje != null ? String(row.solicitud_revision_mensaje) : null,
+        solicitudRevisionCampos: row.solicitud_revision_campos != null ? String(row.solicitud_revision_campos) : null,
+      })),
+    });
+  } catch (err) {
+    console.error("[GET /socios/solicitudes]", err);
+    res.status(500).json({ error: "Error listando solicitudes", detalle: String(err) });
+  }
+});
+
+router.patch("/socios/:id/solicitud", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  if (!(SOCIOS_GESTION_ROLES as readonly string[]).includes(user.role)) {
+    res.status(403).json({ error: "No autorizado" });
+    return;
+  }
+
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const accion = String(req.body?.accion ?? "").trim().toLowerCase();
+  const mensajeRevision = String(req.body?.mensaje_revision ?? req.body?.mensaje ?? "").trim();
+  const camposRaw = req.body?.campos_revision ?? req.body?.campos;
+  let camposRevision: string[] = [];
+  if (Array.isArray(camposRaw)) {
+    camposRevision = camposRaw.map((c) => String(c ?? "").trim()).filter(Boolean);
+  }
+
+  if (!["admitir", "rechazar", "pendiente_datos"].includes(accion)) {
+    res.status(400).json({ error: "accion debe ser admitir, rechazar o pendiente_datos" });
+    return;
+  }
+
+  if (accion === "pendiente_datos" && camposRevision.length === 0) {
+    res.status(400).json({ error: "Indique al menos un campo a corregir (campos_revision)." });
+    return;
+  }
+
+  await ensureSolicitudRevisionColumns();
+
+  try {
+    const cur = await pool.query(
+      `SELECT id, estado, usuario_id FROM db_socios WHERE id = $1`,
+      [id],
+    );
+    if (cur.rows.length === 0) {
+      res.status(404).json({ error: "Socio no encontrado" });
+      return;
+    }
+    const estadoActual = String(cur.rows[0].estado ?? "").trim().toLowerCase();
+    const usuarioSocio = cur.rows[0].usuario_id != null ? Number(cur.rows[0].usuario_id) : null;
+    if (!isEstadoPendienteRevision(estadoActual)) {
+      res.status(400).json({ error: "Esta ficha no está en revisión de solicitud." });
+      return;
+    }
+
+    if (accion === "admitir") {
+      const up = await pool.query(
+        `
+        UPDATE db_socios
+        SET
+          estado = 'activo',
+          solicitud_revision_campos = NULL,
+          solicitud_revision_mensaje = NULL,
+          fecha_alta = COALESCE(fecha_alta, CURRENT_DATE),
+          updated_at = now()
+        WHERE id = $1 AND estado IN ('solicitante', 'pendiente_datos')
+        RETURNING id, usuario_id
+        `,
+        [id],
+      );
+      if (up.rows.length === 0) {
+        res.status(400).json({ error: "No se pudo admitir la solicitud." });
+        return;
+      }
+      const uid = up.rows[0].usuario_id != null ? Number(up.rows[0].usuario_id) : usuarioSocio;
+      if (uid && Number.isFinite(uid)) {
+        const [urow] = await db.select({ rol: usersTable.rol }).from(usersTable).where(eq(usersTable.id, uid)).limit(1);
+        const roles = await getUserRoles(uid, urow?.rol ?? null);
+        const next = Array.from(new Set([...roles, "socio"]));
+        const persisted = await setUserRoles(uid, next);
+        const primary = getPrimaryRole(persisted);
+        await db.update(usersTable).set({
+          rol: primary,
+          socioId: id,
+          updatedAt: new Date(),
+        }).where(eq(usersTable.id, uid));
+      }
+      res.json({ ok: true, estado: "activo" });
+      return;
+    }
+
+    if (accion === "rechazar") {
+      await pool.query(
+        `
+        UPDATE db_socios
+        SET
+          estado = 'rechazado',
+          solicitud_revision_campos = NULL,
+          solicitud_revision_mensaje = NULL,
+          updated_at = now()
+        WHERE id = $1 AND estado IN ('solicitante', 'pendiente_datos')
+        `,
+        [id],
+      );
+      res.json({ ok: true, estado: "rechazado" });
+      return;
+    }
+
+    const camposJson = JSON.stringify(camposRevision);
+    await pool.query(
+      `
+      UPDATE db_socios
+      SET
+        estado = 'pendiente_datos',
+        solicitud_revision_campos = $2,
+        solicitud_revision_mensaje = $3,
+        updated_at = now()
+      WHERE id = $1 AND estado IN ('solicitante', 'pendiente_datos')
+      `,
+      [id, camposJson, mensajeRevision || null],
+    );
+    res.json({ ok: true, estado: "pendiente_datos", campos_revision: camposRevision });
+  } catch (err) {
+    console.error("[PATCH /socios/:id/solicitud]", err);
+    res.status(500).json({ error: "Error actualizando solicitud", detalle: String(err) });
+  }
+});
+
 router.get("/socios/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  if (!["administrador", "directivo", "delegado"].includes(user.role)) {
+  if (!(SOCIOS_GESTION_ROLES as readonly string[]).includes(user.role)) {
     res.status(403).json({ error: "No autorizado" });
     return;
   }
@@ -365,7 +566,7 @@ router.post("/socios", requireAuth, async (req, res): Promise<void> => {
         vat: dni || false,
         birthdate_date: normalizedBirthdate || false,
         ref: numeroSocio || false,
-        customer_rank: normalizedEstado === "solicitante" ? 0 : 1,
+        customer_rank: normalizedEstado === "activo" ? 1 : 0,
         active: normalizedEstado !== "baja",
         ...(tipologiaTagId ? { category_id: [[4, tipologiaTagId]] } : {}),
         ...(odooAvatarBase64 ? { image_1920: odooAvatarBase64 } : {}),
@@ -565,7 +766,7 @@ router.put("/socios/:id", requireAuth, async (req, res): Promise<void> => {
           ...(poblacion !== undefined ? { city: poblacion || false } : {}),
           ...(dni !== undefined ? { vat: dni || false } : {}),
           ...(fechaNacimiento !== undefined ? { birthdate_date: normalizedBirthdate || false } : {}),
-          ...(estado !== undefined ? { active: normalizedEstado !== "baja", customer_rank: normalizedEstado === "solicitante" ? 0 : 1 } : {}),
+          ...(estado !== undefined ? { active: normalizedEstado !== "baja", customer_rank: normalizedEstado === "activo" ? 1 : 0 } : {}),
           ...((tipologia !== undefined || fechaNacimiento !== undefined) && tipologiaTagId ? { category_id: [[4, tipologiaTagId]] } : {}),
           ...(numeroSocio !== undefined ? { ref: numeroSocio || false } : {}),
           ...(avatarOdooBase64 ? { image_1920: avatarOdooBase64 } : {}),

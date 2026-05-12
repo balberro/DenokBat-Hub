@@ -22,6 +22,7 @@ export interface JwtPayload {
   name: string;
   email: string | null;
   role: string;
+  roles?: string[];
   groupId: number | null;
 }
 

@@ -4,6 +4,7 @@ import { signToken } from "../lib/jwt";
 import { requireAuth } from "../middlewares/auth";
 import { pool } from "@workspace/db";
 import { createHash } from "node:crypto";
+import { getPrimaryRole, getUserRoles, setUserRoles } from "../lib/roles";
 
 const router: IRouter = Router();
 
@@ -76,6 +77,15 @@ function splitName(fullName: string): { nombre: string; apellidos: string } {
     nombre: normalized.slice(0, firstSpace).trim(),
     apellidos: normalized.slice(firstSpace + 1).trim(),
   };
+}
+
+async function loadRolesSafe(userId: number | null, fallbackRole: string): Promise<string[]> {
+  if (!userId) return Array.from(new Set(["usuario", fallbackRole]));
+  try {
+    return await getUserRoles(userId, fallbackRole);
+  } catch {
+    return Array.from(new Set(["usuario", fallbackRole]));
+  }
 }
 
 router.post("/auth/login", async (req, res): Promise<void> => {
@@ -169,12 +179,16 @@ router.post("/auth/login", async (req, res): Promise<void> => {
         // No bloqueamos login si falla sincronización local.
       }
       const uidLocal = Number(row.odoo_uid ?? row.id ?? 0) || Number(row.id);
+      const dbUserId = Number(row.id ?? 0);
+      const persistedRoles = await loadRolesSafe(dbUserId > 0 ? dbUserId : null, String(row.rol ?? "usuario"));
+      const primaryRole = getPrimaryRole(persistedRoles);
       const token = signToken({
         uid: uidLocal,
         username: String(row.username ?? requestedUsername),
         name: String(row.nombre ?? requestedUsername),
         email: row.email ? String(row.email) : null,
-        role: String(row.rol ?? "usuario"),
+        role: primaryRole,
+        roles: persistedRoles,
         groupId: null,
       });
       res.json({
@@ -184,7 +198,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
           username: String(row.username ?? requestedUsername),
           name: String(row.nombre ?? requestedUsername),
           email: row.email ? String(row.email) : null,
-          role: String(row.rol ?? "usuario"),
+          role: primaryRole,
+          roles: persistedRoles,
           avatar: row.avatar_url ? String(row.avatar_url) : null,
           groupId: null,
         },
@@ -236,6 +251,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const email = user.email ? String(user.email).trim() : "";
 
   // Sincronizamos login Odoo en db_users para mantener datos de acceso completos.
+  let dbUserId: number | null = null;
   try {
     const hasApellidos = await hasColumn("apellidos");
     const hasTelefono = await hasColumn("telefono");
@@ -302,6 +318,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
         `,
         values,
       );
+      dbUserId = Number(existing.rows[0]?.id ?? 0) || null;
     } else {
       const columns = ["odoo_uid", "socio_id", "username", "nombre", "email", "rol", "avatar_url", "ultimo_acceso", "created_at", "updated_at"];
       const values: Array<string | number | null> = [
@@ -331,27 +348,41 @@ router.post("/auth/login", async (req, res): Promise<void> => {
         values.splice(insertAt, 0, localPasswordHash);
       }
       const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
-      await pool.query(
+      const inserted = await pool.query(
         `
         INSERT INTO db_users (
           ${columns.join(", ")}
         ) VALUES (
           ${placeholders}
         )
+        RETURNING id
         `,
         values,
       );
+      dbUserId = Number(inserted.rows[0]?.id ?? 0) || null;
     }
   } catch {
     // No bloqueamos login si falla sincronización local.
   }
+
+  const targetRoles = Array.from(new Set(["usuario", role]));
+  if (dbUserId) {
+    try {
+      await setUserRoles(dbUserId, targetRoles);
+    } catch {
+      // No bloqueamos login si falla sincronización de roles.
+    }
+  }
+  const persistedRoles = await loadRolesSafe(dbUserId, role);
+  const primaryRole = getPrimaryRole(persistedRoles);
 
   const token = signToken({
     uid,
     username,
     name: String(user.name ?? username),
     email: user.email ? String(user.email) : null,
-    role,
+    role: primaryRole,
+    roles: persistedRoles,
     groupId: null,
   });
 
@@ -362,7 +393,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       username: String(username),
       name: String(user.name ?? username),
       email: user.email ? String(user.email) : null,
-      role,
+      role: primaryRole,
+      roles: persistedRoles,
       avatar: null,
       groupId: null,
     },
@@ -377,6 +409,7 @@ router.get("/auth/me", requireAuth, (req, res): void => {
     name: user.name,
     email: user.email,
     role: user.role,
+    roles: user.roles ?? [user.role],
     avatar: null,
     groupId: user.groupId,
   });

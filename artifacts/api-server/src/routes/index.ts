@@ -22,6 +22,7 @@ import articulosRouter from "./articulos";
 import galeriaRouter from "./galeria";
 import nosotrosRouter from "./nosotros";
 import perfilRouter from "./perfil";
+import asociacionRouter from "./asociacion";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(articulosRouter);
 router.use(galeriaRouter);
 router.use(nosotrosRouter);
 router.use(perfilRouter);
+router.use(asociacionRouter);
 
 export default router;

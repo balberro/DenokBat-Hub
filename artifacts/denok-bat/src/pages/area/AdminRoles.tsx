@@ -15,6 +15,7 @@ type AdminUser = {
   apellidos?: string | null;
   email?: string | null;
   rol: RoleOption;
+  roles?: RoleOption[];
   avatarUrl?: string | null;
 };
 
@@ -24,7 +25,7 @@ export default function AdminRoles() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleOption>("usuario");
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [roleDrafts, setRoleDrafts] = useState<Record<number, RoleOption>>({});
+  const [roleDrafts, setRoleDrafts] = useState<Record<number, RoleOption[]>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
@@ -40,9 +41,13 @@ export default function AdminRoles() {
       if (!r.ok) throw new Error("Error cargando usuarios para roles");
       const data = await r.json();
       const incomingUsers: AdminUser[] = Array.isArray(data?.users) ? data.users : [];
-      const drafts: Record<number, RoleOption> = {};
+      const drafts: Record<number, RoleOption[]> = {};
       for (const user of incomingUsers) {
-        drafts[user.id] = (roleFilterOptions.includes(user.rol) ? user.rol : "usuario") as RoleOption;
+        const incomingRoles = Array.isArray(user.roles) && user.roles.length > 0
+          ? user.roles.filter((item): item is RoleOption => roleFilterOptions.includes(item))
+          : [((roleFilterOptions.includes(user.rol) ? user.rol : "usuario") as RoleOption)];
+        const withBase = Array.from(new Set<RoleOption>(["usuario", ...incomingRoles]));
+        drafts[user.id] = withBase;
       }
       setUsers(incomingUsers);
       setRoleDrafts(drafts);
@@ -61,8 +66,8 @@ export default function AdminRoles() {
 
   const changeRole = async (userId: number) => {
     if (!token) return;
-    const role = roleDrafts[userId];
-    if (!role) return;
+    const roles = roleDrafts[userId];
+    if (!roles || roles.length === 0) return;
     setSavingId(userId);
     setNotice("");
     try {
@@ -72,7 +77,7 @@ export default function AdminRoles() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ roles }),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => null);
@@ -93,7 +98,8 @@ export default function AdminRoles() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((user) => {
-      if (String(user.rol ?? "usuario").toLowerCase() !== roleFilter) return false;
+      const userRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.rol];
+      if (!userRoles.map((r) => String(r).toLowerCase()).includes(roleFilter)) return false;
       if (!q) return true;
       const fullName = `${user.nombre ?? ""} ${user.apellidos ?? ""}`.trim().toLowerCase();
       const username = String(user.username ?? "").toLowerCase();
@@ -154,21 +160,37 @@ export default function AdminRoles() {
               {u.email && <p className="text-xs text-muted-foreground">{u.email}</p>}
               <p className="text-xs text-muted-foreground mt-1">
                 {t("admin_roles.current")}:{" "}
-                <span className="capitalize font-medium text-foreground">{u.rol || "usuario"}</span>
+                <span className="capitalize font-medium text-foreground">
+                  {Array.isArray(u.roles) && u.roles.length > 0 ? u.roles.join(", ") : (u.rol || "usuario")}
+                </span>
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={roleDrafts[u.id] ?? "usuario"}
-                onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [u.id]: e.target.value as RoleOption }))}
-                className="px-3 py-2 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary text-sm capitalize"
-              >
-                {roleFilterOptions.map((role) => (
-                  <option key={role} value={role} className="capitalize">
-                    {role}
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs min-w-[240px]">
+                {roleFilterOptions.map((role) => {
+                  const selected = (roleDrafts[u.id] ?? ["usuario"]).includes(role);
+                  const isBaseRole = role === "usuario";
+                  return (
+                    <label key={role} className="inline-flex items-center gap-1.5 capitalize">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={isBaseRole}
+                        onChange={(e) => {
+                          setRoleDrafts((prev) => {
+                            const current = new Set<RoleOption>(prev[u.id] ?? ["usuario"]);
+                            if (e.target.checked) current.add(role);
+                            else current.delete(role);
+                            current.add("usuario");
+                            return { ...prev, [u.id]: Array.from(current) };
+                          });
+                        }}
+                      />
+                      {role}
+                    </label>
+                  );
+                })}
+              </div>
               <Button size="sm" onClick={() => changeRole(u.id)} disabled={savingId === u.id}>
                 {savingId === u.id ? "Guardando..." : "Actualizar rol"}
               </Button>

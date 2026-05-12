@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { getPrimaryRole, getUserRoles, setUserRoles } from "../lib/roles";
 
 const router: IRouter = Router();
 
@@ -942,11 +943,12 @@ router.get("/admin/roles/users", requireAuth, requireRole("administrador"), asyn
       .from(usersTable)
       .orderBy(asc(usersTable.nombre), asc(usersTable.username));
 
-    const users = rows.map((row) => {
+    const users = await Promise.all(rows.map(async (row) => {
       const fullName = normalizeText(row.nombre);
       const firstSpace = fullName.indexOf(" ");
       const nombre = firstSpace > 0 ? fullName.slice(0, firstSpace).trim() : fullName;
       const apellidos = firstSpace > 0 ? fullName.slice(firstSpace + 1).trim() : "";
+      const roles = await getUserRoles(Number(row.id), normalizeText(row.rol) || "usuario");
       return {
         id: row.id,
         socioId: row.socioId,
@@ -954,10 +956,11 @@ router.get("/admin/roles/users", requireAuth, requireRole("administrador"), asyn
         nombre,
         apellidos,
         email: normalizeText(row.email),
-        rol: normalizeText(row.rol) || "usuario",
+        rol: getPrimaryRole(roles),
+        roles,
         avatarUrl: row.avatarUrl ?? null,
       };
-    });
+    }));
 
     res.json({ users });
   } catch (err) {
@@ -968,19 +971,39 @@ router.get("/admin/roles/users", requireAuth, requireRole("administrador"), asyn
 router.put("/admin/roles/users/:userId", requireAuth, requireRole("administrador"), async (req, res): Promise<void> => {
   const userId = Number(req.params.userId);
   const role = normalizeText(req.body?.role).toLowerCase();
+  const rolesPayload = Array.isArray(req.body?.roles) ? req.body.roles : null;
   const allowedRoles = new Set(["usuario", "socio", "delegado", "directivo", "contable", "administrador"]);
   if (!Number.isFinite(userId)) {
     res.status(400).json({ error: "userId inválido" });
     return;
   }
-  if (!allowedRoles.has(role)) {
+  if (!role && !rolesPayload) {
+    res.status(400).json({ error: "Debe enviar role o roles" });
+    return;
+  }
+  if (role && !allowedRoles.has(role)) {
     res.status(400).json({ error: "Rol inválido" });
     return;
   }
+  if (rolesPayload) {
+    for (const item of rolesPayload) {
+      const normalized = String(item ?? "").trim().toLowerCase();
+      if (!allowedRoles.has(normalized)) {
+        res.status(400).json({ error: "Rol inválido" });
+        return;
+      }
+    }
+  }
 
   try {
+    const nextRoles = rolesPayload
+      ? Array.from(new Set(rolesPayload.map((item) => String(item ?? "").trim().toLowerCase()).filter(Boolean)))
+      : [role];
+    if (!nextRoles.includes("usuario")) nextRoles.push("usuario");
+    const persistedRoles = await setUserRoles(userId, nextRoles);
+    const primaryRole = getPrimaryRole(persistedRoles);
     const updated = await db.update(usersTable).set({
-      rol: role,
+      rol: primaryRole,
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId)).returning({
       id: usersTable.id,
@@ -990,7 +1013,13 @@ router.put("/admin/roles/users/:userId", requireAuth, requireRole("administrador
       res.status(404).json({ error: "Usuario no encontrado" });
       return;
     }
-    res.json({ ok: true, user: updated[0] });
+    res.json({
+      ok: true,
+      user: {
+        ...updated[0],
+        roles: persistedRoles,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: "Error actualizando rol de usuario", detalle: String(err) });
   }
