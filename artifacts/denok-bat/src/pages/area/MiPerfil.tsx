@@ -24,7 +24,7 @@ export default function MiPerfil() {
     avatarUrl: user?.avatar ?? "",
   });
   const roles = user ? getUserRoles(user) : [];
-  const isUsuario = roles.includes("usuario");
+  const canEditFullProfile = roles.includes("usuario") || roles.includes("socio");
   const userUsername = (user as { username?: string } | null)?.username ?? "";
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const avatarPreview = String(form.avatarUrl || user?.avatar || "").trim();
@@ -83,7 +83,7 @@ export default function MiPerfil() {
         // no-op
       }
     })();
-  }, [token, user?.id, userUsername, isUsuario]);
+  }, [token, user?.id, userUsername, canEditFullProfile]);
 
   const fileToDataUrl = async (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -95,7 +95,7 @@ export default function MiPerfil() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !isUsuario) {
+    if (!token || !canEditFullProfile) {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       return;
@@ -177,7 +177,7 @@ export default function MiPerfil() {
           </button>
         </div>
         <div>
-          <p className="font-semibold text-lg text-foreground">{isUsuario ? (form.username || "-") : user?.name}</p>
+          <p className="font-semibold text-lg text-foreground">{canEditFullProfile ? (form.username || "-") : user?.name}</p>
           <p className="text-sm text-muted-foreground capitalize">{user?.role}</p>
           <label className="text-sm text-primary hover:underline mt-1 cursor-pointer inline-block">
             {t("perfil.change_photo")}
@@ -207,7 +207,7 @@ export default function MiPerfil() {
         <h2 className="text-xl font-semibold text-foreground">{t("perfil.personal_data")}</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {isUsuario ? (
+          {canEditFullProfile ? (
             <>
               <div>
                 <label className="block text-sm font-semibold mb-1.5">{t("form.username")}</label>
