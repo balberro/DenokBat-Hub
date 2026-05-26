@@ -1,16 +1,16 @@
 {
   "name": "workspace",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "dev:web": "bash ./scripts/start-web-dev.sh",
-    "build:test": "pnpm --filter @workspace/denok-bat run build && pnpm --filter @workspace/api-server run build",
+    "build:test": "PORT=${PORT:-3001} BASE_PATH=${BASE_PATH:-/} API_PROXY_TARGET=${API_PROXY_TARGET:-http://127.0.0.1:3001} corepack pnpm --filter @workspace/denok-bat run build && corepack pnpm --filter @workspace/api-server run build",
     "update:dinahosting-test": "bash ./scripts/update-dinahosting-test.sh",
-    "start:test": "pnpm --filter @workspace/api-server run start",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "start:test": "corepack pnpm --filter @workspace/api-server run start",
+    "build": "corepack pnpm run typecheck && corepack pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "corepack pnpm run typecheck:libs && corepack pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
   "devDependencies": {

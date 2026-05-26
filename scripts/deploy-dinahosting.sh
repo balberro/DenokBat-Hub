@@ -7,21 +7,30 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM=(pnpm)
+elif command -v corepack >/dev/null 2>&1; then
+  PNPM=(corepack pnpm)
+else
+  echo "Error: no se encuentra pnpm ni corepack en PATH." >&2
+  exit 1
+fi
+
 echo "==> git pull"
 git pull --ff-only
 
 echo "==> pnpm install"
 if [ -f pnpm-lock.yaml ]; then
-  pnpm install --frozen-lockfile
+  "${PNPM[@]}" install --frozen-lockfile
 else
-  pnpm install
+  "${PNPM[@]}" install
 fi
 
 echo "==> build (Vite necesita PORT>0; la API se empaqueta aparte)"
 export PORT="${DEPLOY_VITE_PORT:-3001}"
 export BASE_PATH="${DEPLOY_BASE_PATH:-/}"
 export API_PROXY_TARGET="${DEPLOY_API_PROXY_TARGET:-http://127.0.0.1:3001}"
-pnpm run build:test
+"${PNPM[@]}" run build:test
 
 # Asegura rutas de subida necesarias en runtime (avatares, etc.)
 echo "==> ensure uploads directories"
