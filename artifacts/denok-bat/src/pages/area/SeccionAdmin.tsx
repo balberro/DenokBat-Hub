@@ -288,10 +288,40 @@ function AdminHomeEditor({ token }: { token: string | null }) {
   );
 }
 
-function AdminFooterEditor({ token }: { token: string | null }) {
-  const [form, setForm] = useState({
-    footerLogoText: "",
-    footerLogoTextEu: "",
+/**
+ * Editor consolidado de pie, contacto y avisos legales.
+ *
+ * Reúne en una sola pantalla, con pestañas, los campos que antes vivían en
+ * "Editar pie y contacto" y en "Editor política de privacidad", añadiendo
+ * además formularios equivalentes para "Aviso legal" y "Cookies". Cada
+ * pestaña conserva su propio botón Guardar y carga las claves de
+ * configuración correspondientes.
+ */
+type FooterLegalTab = "pie" | "contacto" | "legal" | "privacy" | "cookies";
+
+const FOOTER_LEGAL_TABS: { key: FooterLegalTab; label: string }[] = [
+  { key: "pie", label: "Pie" },
+  { key: "contacto", label: "Contacto" },
+  { key: "legal", label: "Aviso legal" },
+  { key: "privacy", label: "Política de privacidad" },
+  { key: "cookies", label: "Cookies" },
+];
+
+type LegalForm = { titleEs: string; titleEu: string; bodyEs: string; bodyEu: string };
+const EMPTY_LEGAL_FORM: LegalForm = { titleEs: "", titleEu: "", bodyEs: "", bodyEu: "" };
+
+function AdminFooterLegalEditor({
+  token,
+  initialTab = "pie",
+}: {
+  token: string | null;
+  initialTab?: FooterLegalTab;
+}) {
+  const [activeTab, setActiveTab] = useState<FooterLegalTab>(initialTab);
+  // Pie: solo el logo/marca textual del pie. El resto del pie (links, social) no es editable aún aquí.
+  const [pieForm, setPieForm] = useState({ footerLogoText: "", footerLogoTextEu: "" });
+  // Contacto: dirección, teléfono, email, whatsapp, horario, mapa.
+  const [contactoForm, setContactoForm] = useState({
     footerAddress: "",
     footerPhone: "",
     footerEmail: "",
@@ -299,8 +329,12 @@ function AdminFooterEditor({ token }: { token: string | null }) {
     footerHours: "",
     footerMapEmbed: "",
   });
+  const [legalForm, setLegalForm] = useState<LegalForm>(EMPTY_LEGAL_FORM);
+  const [privacyForm, setPrivacyForm] = useState<LegalForm>(EMPTY_LEGAL_FORM);
+  const [cookiesForm, setCookiesForm] = useState<LegalForm>(EMPTY_LEGAL_FORM);
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<FooterLegalTab | null>(null);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -308,15 +342,35 @@ function AdminFooterEditor({ token }: { token: string | null }) {
       try {
         const r = await fetch(`${API_BASE}/api/config/public`);
         const d = await r.json();
-        setForm({
+        setPieForm({
           footerLogoText: String(d?.["footer.logo_text"] ?? ""),
           footerLogoTextEu: String(d?.["footer.logo_text_eu"] ?? ""),
+        });
+        setContactoForm({
           footerAddress: String(d?.["footer.contact.address"] ?? ""),
           footerPhone: String(d?.["footer.contact.phone"] ?? ""),
           footerEmail: String(d?.["footer.contact.email"] ?? ""),
           footerWhatsapp: String(d?.["footer.contact.whatsapp"] ?? ""),
           footerHours: String(d?.["footer.contact.hours"] ?? ""),
           footerMapEmbed: String(d?.["footer.contact.map_embed"] ?? ""),
+        });
+        setPrivacyForm({
+          titleEs: String(d?.["privacy.policy_title_es"] ?? ""),
+          titleEu: String(d?.["privacy.policy_title_eu"] ?? ""),
+          bodyEs: String(d?.["privacy.policy_body_es"] ?? ""),
+          bodyEu: String(d?.["privacy.policy_body_eu"] ?? ""),
+        });
+        setLegalForm({
+          titleEs: String(d?.["legal.notice_title_es"] ?? ""),
+          titleEu: String(d?.["legal.notice_title_eu"] ?? ""),
+          bodyEs: String(d?.["legal.notice_body_es"] ?? ""),
+          bodyEu: String(d?.["legal.notice_body_eu"] ?? ""),
+        });
+        setCookiesForm({
+          titleEs: String(d?.["legal.cookies_title_es"] ?? ""),
+          titleEu: String(d?.["legal.cookies_title_eu"] ?? ""),
+          bodyEs: String(d?.["legal.cookies_body_es"] ?? ""),
+          bodyEu: String(d?.["legal.cookies_body_eu"] ?? ""),
         });
       } catch {
         // keep defaults
@@ -326,48 +380,73 @@ function AdminFooterEditor({ token }: { token: string | null }) {
     })();
   }, []);
 
-  const saveFooter = async () => {
+  const buildHeaders = (): Record<string, string> => ({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token ?? ""}`,
+  });
+
+  const persistEntries = async (entries: ReadonlyArray<readonly [string, string]>) => {
+    const headers = buildHeaders();
+    for (const [clave, valor] of entries) {
+      const r = await fetch(`${API_BASE}/api/config/${encodeURIComponent(clave)}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ valor: String(valor ?? "") }),
+      });
+      if (!r.ok) throw new Error("save failed");
+    }
+  };
+
+  const savePie = async () => {
     if (!token) return;
-    setSaving(true);
+    setSaving("pie");
     setNotice("");
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      };
-      const entries = [
-        ["footer.logo_text", form.footerLogoText],
-        ["footer.logo_text_eu", form.footerLogoTextEu],
-        ["footer.contact.address", form.footerAddress],
-        ["footer.contact.phone", form.footerPhone],
-        ["footer.contact.email", form.footerEmail],
-        ["footer.contact.whatsapp", form.footerWhatsapp],
-        ["footer.contact.hours", form.footerHours],
-        ["footer.contact.map_embed", form.footerMapEmbed],
-      ] as const;
-      for (const [clave, valor] of entries) {
-        const r = await fetch(`${API_BASE}/api/config/${encodeURIComponent(clave)}`, {
-          method: "PUT",
-          headers,
-          body: JSON.stringify({ valor: String(valor ?? "") }),
-        });
-        if (!r.ok) throw new Error("save failed");
-      }
+      await persistEntries([
+        ["footer.logo_text", pieForm.footerLogoText],
+        ["footer.logo_text_eu", pieForm.footerLogoTextEu],
+      ] as const);
       const verify = await fetch(`${API_BASE}/api/config`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!verify.ok) throw new Error("verify failed");
       const saved = await verify.json();
       const persistedLogoTextEu = normalizeConfigValue(saved?.["footer.logo_text_eu"] ?? "");
-      const persistedHours = normalizeConfigValue(saved?.["footer.contact.hours"] ?? "");
-      const persistedMapEmbed = normalizeConfigValue(saved?.["footer.contact.map_embed"] ?? "");
-      const inputLogoTextEu = normalizeConfigValue(form.footerLogoTextEu ?? "");
-      const inputHours = normalizeConfigValue(form.footerHours ?? "");
-      const inputMapEmbed = normalizeConfigValue(form.footerMapEmbed ?? "");
+      const inputLogoTextEu = normalizeConfigValue(pieForm.footerLogoTextEu ?? "");
       if (persistedLogoTextEu !== inputLogoTextEu) {
         setNotice("Guardado parcial: revisa el texto bajo logo (Euskera), no se ha persistido correctamente.");
         return;
       }
+      setNotice("Pie actualizado correctamente.");
+    } catch {
+      setNotice("Error guardando el pie.");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const saveContacto = async () => {
+    if (!token) return;
+    setSaving("contacto");
+    setNotice("");
+    try {
+      await persistEntries([
+        ["footer.contact.address", contactoForm.footerAddress],
+        ["footer.contact.phone", contactoForm.footerPhone],
+        ["footer.contact.email", contactoForm.footerEmail],
+        ["footer.contact.whatsapp", contactoForm.footerWhatsapp],
+        ["footer.contact.hours", contactoForm.footerHours],
+        ["footer.contact.map_embed", contactoForm.footerMapEmbed],
+      ] as const);
+      const verify = await fetch(`${API_BASE}/api/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!verify.ok) throw new Error("verify failed");
+      const saved = await verify.json();
+      const persistedHours = normalizeConfigValue(saved?.["footer.contact.hours"] ?? "");
+      const persistedMapEmbed = normalizeConfigValue(saved?.["footer.contact.map_embed"] ?? "");
+      const inputHours = normalizeConfigValue(contactoForm.footerHours ?? "");
+      const inputMapEmbed = normalizeConfigValue(contactoForm.footerMapEmbed ?? "");
       if (persistedHours !== inputHours) {
         setNotice("Guardado parcial: revisa el campo Horario, no se ha persistido correctamente.");
         return;
@@ -376,161 +455,239 @@ function AdminFooterEditor({ token }: { token: string | null }) {
         setNotice("Guardado parcial: revisa el campo Mapa, no se ha persistido correctamente.");
         return;
       }
-      setNotice("Pie y contacto actualizados correctamente.");
+      setNotice("Contacto actualizado correctamente.");
     } catch {
-      setNotice("Error guardando el pie de página.");
+      setNotice("Error guardando el contacto.");
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
+  const saveLegalGeneric = async (
+    tab: FooterLegalTab,
+    form: LegalForm,
+    keys: { title_es: string; title_eu: string; body_es: string; body_eu: string },
+    okMessage: string,
+    koMessage: string,
+  ) => {
+    if (!token) return;
+    setSaving(tab);
+    setNotice("");
+    try {
+      await persistEntries([
+        [keys.title_es, form.titleEs],
+        [keys.title_eu, form.titleEu],
+        [keys.body_es, form.bodyEs],
+        [keys.body_eu, form.bodyEu],
+      ] as const);
+      setNotice(okMessage);
+    } catch {
+      setNotice(koMessage);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const savePrivacy = () =>
+    saveLegalGeneric(
+      "privacy",
+      privacyForm,
+      {
+        title_es: "privacy.policy_title_es",
+        title_eu: "privacy.policy_title_eu",
+        body_es: "privacy.policy_body_es",
+        body_eu: "privacy.policy_body_eu",
+      },
+      "Política de privacidad actualizada.",
+      "Error guardando la política de privacidad.",
+    );
+  const saveLegal = () =>
+    saveLegalGeneric(
+      "legal",
+      legalForm,
+      {
+        title_es: "legal.notice_title_es",
+        title_eu: "legal.notice_title_eu",
+        body_es: "legal.notice_body_es",
+        body_eu: "legal.notice_body_eu",
+      },
+      "Aviso legal actualizado.",
+      "Error guardando el aviso legal.",
+    );
+  const saveCookies = () =>
+    saveLegalGeneric(
+      "cookies",
+      cookiesForm,
+      {
+        title_es: "legal.cookies_title_es",
+        title_eu: "legal.cookies_title_eu",
+        body_es: "legal.cookies_body_es",
+        body_eu: "legal.cookies_body_eu",
+      },
+      "Política de cookies actualizada.",
+      "Error guardando la política de cookies.",
+    );
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
-      <div className="flex items-center gap-3 mb-8">
+    <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
           <Settings className="w-6 h-6 text-primary" />
         </div>
-        <h1 className="text-3xl font-bold text-foreground">Editor de pie y contacto</h1>
+        <h1 className="text-3xl font-bold text-foreground">Editar pie, contacto, ...</h1>
       </div>
+
+      <div className="flex flex-wrap gap-2 mb-4 border-b border-border">
+        {FOOTER_LEGAL_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => {
+              setActiveTab(tab.key);
+              setNotice("");
+            }}
+            className={`px-4 py-2 -mb-px border-b-2 text-sm font-medium transition-colors ${
+              activeTab === tab.key
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto bajo logo</label>
-          <input value={form.footerLogoText} onChange={(e) => setForm((p) => ({ ...p, footerLogoText: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto bajo logo (Euskera)</label>
-          <input value={form.footerLogoTextEu} onChange={(e) => setForm((p) => ({ ...p, footerLogoTextEu: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Dirección</label>
-          <textarea value={form.footerAddress} onChange={(e) => setForm((p) => ({ ...p, footerAddress: e.target.value }))} rows={2} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" disabled={loading} />
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Tfno</label>
-            <input value={form.footerPhone} onChange={(e) => setForm((p) => ({ ...p, footerPhone: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Email</label>
-            <input value={form.footerEmail} onChange={(e) => setForm((p) => ({ ...p, footerEmail: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Wp</label>
-          <input value={form.footerWhatsapp} onChange={(e) => setForm((p) => ({ ...p, footerWhatsapp: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Horario</label>
-          <input value={form.footerHours} onChange={(e) => setForm((p) => ({ ...p, footerHours: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Contacto · Mapa (URL embed)</label>
-          <textarea value={form.footerMapEmbed} onChange={(e) => setForm((p) => ({ ...p, footerMapEmbed: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" disabled={loading} />
-        </div>
+        {activeTab === "pie" && (
+          <>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto bajo logo</label>
+              <input value={pieForm.footerLogoText} onChange={(e) => setPieForm((p) => ({ ...p, footerLogoText: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto bajo logo (Euskera)</label>
+              <input value={pieForm.footerLogoTextEu} onChange={(e) => setPieForm((p) => ({ ...p, footerLogoTextEu: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button onClick={savePie} disabled={saving !== null || loading}>{saving === "pie" ? "Guardando..." : "Guardar pie"}</Button>
+              <Button variant="outline" onClick={() => setPieForm({ footerLogoText: "", footerLogoTextEu: "" })} disabled={saving !== null || loading}>Limpiar</Button>
+            </div>
+          </>
+        )}
+
+        {activeTab === "contacto" && (
+          <>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Dirección</label>
+              <textarea value={contactoForm.footerAddress} onChange={(e) => setContactoForm((p) => ({ ...p, footerAddress: e.target.value }))} rows={2} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" disabled={loading} />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Tfno</label>
+                <input value={contactoForm.footerPhone} onChange={(e) => setContactoForm((p) => ({ ...p, footerPhone: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Email</label>
+                <input value={contactoForm.footerEmail} onChange={(e) => setContactoForm((p) => ({ ...p, footerEmail: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Whatsapp</label>
+              <input value={contactoForm.footerWhatsapp} onChange={(e) => setContactoForm((p) => ({ ...p, footerWhatsapp: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Horario</label>
+              <input value={contactoForm.footerHours} onChange={(e) => setContactoForm((p) => ({ ...p, footerHours: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" disabled={loading} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Mapa (URL embed)</label>
+              <textarea value={contactoForm.footerMapEmbed} onChange={(e) => setContactoForm((p) => ({ ...p, footerMapEmbed: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" disabled={loading} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button onClick={saveContacto} disabled={saving !== null || loading}>{saving === "contacto" ? "Guardando..." : "Guardar contacto"}</Button>
+              <Button variant="outline" onClick={() => setContactoForm({ footerAddress: "", footerPhone: "", footerEmail: "", footerWhatsapp: "", footerHours: "", footerMapEmbed: "" })} disabled={saving !== null || loading}>Limpiar</Button>
+            </div>
+          </>
+        )}
+
+        {activeTab === "legal" && (
+          <LegalFormFields
+            form={legalForm}
+            setForm={setLegalForm}
+            loading={loading}
+            saving={saving === "legal"}
+            onSave={saveLegal}
+            saveLabel="Guardar aviso legal"
+          />
+        )}
+
+        {activeTab === "privacy" && (
+          <LegalFormFields
+            form={privacyForm}
+            setForm={setPrivacyForm}
+            loading={loading}
+            saving={saving === "privacy"}
+            onSave={savePrivacy}
+            saveLabel="Guardar política"
+          />
+        )}
+
+        {activeTab === "cookies" && (
+          <LegalFormFields
+            form={cookiesForm}
+            setForm={setCookiesForm}
+            loading={loading}
+            saving={saving === "cookies"}
+            onSave={saveCookies}
+            saveLabel="Guardar cookies"
+          />
+        )}
+
         {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
-        <div className="flex gap-3 pt-2">
-          <Button onClick={saveFooter} disabled={saving || loading}>{saving ? "Guardando..." : "Guardar pie"}</Button>
-          <Button variant="outline" onClick={() => setForm({ footerLogoText: "", footerLogoTextEu: "", footerAddress: "", footerPhone: "", footerEmail: "", footerWhatsapp: "", footerHours: "", footerMapEmbed: "" })} disabled={saving || loading}>Limpiar</Button>
-        </div>
       </div>
     </div>
   );
 }
 
-function AdminPrivacyEditor({ token }: { token: string | null }) {
-  const [form, setForm] = useState({
-    titleEs: "",
-    titleEu: "",
-    bodyEs: "",
-    bodyEu: "",
-  });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(`${API_BASE}/api/config/public`);
-        const d = await r.json();
-        setForm({
-          titleEs: String(d?.["privacy.policy_title_es"] ?? ""),
-          titleEu: String(d?.["privacy.policy_title_eu"] ?? ""),
-          bodyEs: String(d?.["privacy.policy_body_es"] ?? ""),
-          bodyEu: String(d?.["privacy.policy_body_eu"] ?? ""),
-        });
-      } catch {
-        // keep defaults
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const savePrivacy = async () => {
-    if (!token) return;
-    setSaving(true);
-    setNotice("");
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      };
-      const entries = [
-        ["privacy.policy_title_es", form.titleEs],
-        ["privacy.policy_title_eu", form.titleEu],
-        ["privacy.policy_body_es", form.bodyEs],
-        ["privacy.policy_body_eu", form.bodyEu],
-      ] as const;
-      for (const [clave, valor] of entries) {
-        const r = await fetch(`${API_BASE}/api/config/${encodeURIComponent(clave)}`, {
-          method: "PUT",
-          headers,
-          body: JSON.stringify({ valor: String(valor ?? "") }),
-        });
-        if (!r.ok) throw new Error("save failed");
-      }
-      setNotice("Política de privacidad actualizada.");
-    } catch {
-      setNotice("Error guardando la política de privacidad.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+/** Bloque de campos compartido por aviso legal, política de privacidad y cookies. */
+function LegalFormFields({
+  form,
+  setForm,
+  loading,
+  saving,
+  onSave,
+  saveLabel,
+}: {
+  form: LegalForm;
+  setForm: React.Dispatch<React.SetStateAction<LegalForm>>;
+  loading: boolean;
+  saving: boolean;
+  onSave: () => void;
+  saveLabel: string;
+}) {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
-          <Settings className="w-6 h-6 text-primary" />
-        </div>
-        <h1 className="text-3xl font-bold text-foreground">Editor política de privacidad</h1>
-      </div>
-      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título (ES)</label>
-            <input value={form.titleEs} onChange={(e) => setForm((p) => ({ ...p, titleEs: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título (EU)</label>
-            <input value={form.titleEu} onChange={(e) => setForm((p) => ({ ...p, titleEu: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" disabled={loading} />
-          </div>
+    <>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título (ES)</label>
+          <input value={form.titleEs} onChange={(e) => setForm((p) => ({ ...p, titleEs: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" disabled={loading} />
         </div>
         <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto completo (ES)</label>
-          <textarea value={form.bodyEs} onChange={(e) => setForm((p) => ({ ...p, bodyEs: e.target.value }))} rows={10} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-y" disabled={loading} />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto completo (EU)</label>
-          <textarea value={form.bodyEu} onChange={(e) => setForm((p) => ({ ...p, bodyEu: e.target.value }))} rows={10} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-y" disabled={loading} />
-        </div>
-        {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
-        <div className="flex gap-3 pt-2">
-          <Button onClick={savePrivacy} disabled={saving || loading}>{saving ? "Guardando..." : "Guardar política"}</Button>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título (EU)</label>
+          <input value={form.titleEu} onChange={(e) => setForm((p) => ({ ...p, titleEu: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" disabled={loading} />
         </div>
       </div>
-    </div>
+      <div>
+        <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto completo (ES)</label>
+        <textarea value={form.bodyEs} onChange={(e) => setForm((p) => ({ ...p, bodyEs: e.target.value }))} rows={10} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-y" disabled={loading} />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto completo (EU)</label>
+        <textarea value={form.bodyEu} onChange={(e) => setForm((p) => ({ ...p, bodyEu: e.target.value }))} rows={10} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-y" disabled={loading} />
+      </div>
+      <div className="flex gap-3 pt-2">
+        <Button onClick={onSave} disabled={saving || loading}>{saving ? "Guardando..." : saveLabel}</Button>
+      </div>
+    </>
   );
 }
 
@@ -605,8 +762,10 @@ export default function SeccionAdmin() {
 
   if (location === "/admin/app") return <AdminHomeEditor token={token} />;
 
-  if (location === "/admin/footer") return <AdminFooterEditor token={token} />;
-  if (location === "/admin/privacidad") return <AdminPrivacyEditor token={token} />;
+  if (location === "/admin/footer") return <AdminFooterLegalEditor token={token} />;
+  // Compatibilidad: la antigua opción "Política de privacidad" abre el editor
+  // consolidado directamente en la pestaña correspondiente.
+  if (location === "/admin/privacidad") return <AdminFooterLegalEditor token={token} initialTab="privacy" />;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12 text-center">

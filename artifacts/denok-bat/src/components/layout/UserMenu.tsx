@@ -28,11 +28,16 @@ const roleItems: Record<string, LinkItem[]> = {
   delegado: [
     { href: "/mi-grupo",            label: "menu.mi_grupo" },
     { href: "/inscripciones-grupo", label: "menu.inscripciones_grupo" },
+    { href: "/pagos-grupo",         label: "menu.pagos_grupo" },
   ],
   directivo: [
     { href: "/admin/eventos",       label: "menu.admin_eventos" },
     { href: "/admin/actividades",   label: "menu.admin_actividades" },
     { href: "/admin/nosotros",      label: "menu.admin_nosotros" },
+    { href: "/admin/sugerencias",  label: "menu.admin_sugerencias" },
+    { href: "/admin/propuestas-junta", label: "menu.buzon_propuestas" },
+    { href: "/admin/actas",         label: "menu.gestion_actas" },
+    { href: "/admin/expedientes",  label: "menu.gestion_expedientes" },
   ],
   contable: [
     { href: "/admin/datos-asociacion", label: "menu.asociacion_datos" },
@@ -50,7 +55,6 @@ const roleItems: Record<string, LinkItem[]> = {
     { href: "/admin/odoo",          label: "menu.odoo" },
     { href: "/admin/app",           label: "menu.app" },
     { href: "/admin/footer",        label: "menu.footer" },
-    { href: "/admin/privacidad",    label: "menu.privacy_admin" },
     { href: "/admin/database",      label: "menu.database" },
   ],
 };

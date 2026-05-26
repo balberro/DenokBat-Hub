@@ -310,6 +310,16 @@ router.put("/admin/nosotros/config", requireAuth, requireRole("directivo", "admi
   }
 });
 
+router.get("/admin/nosotros/cargos", requireAuth, requireRole("contable", "directivo", "administrador"), async (_req, res): Promise<void> => {
+  try {
+    await ensureDefaultCargos();
+    const cargos = await db.select().from(cargosTable).orderBy(asc(cargosTable.ambito), asc(cargosTable.nombre));
+    res.json({ cargos });
+  } catch (err) {
+    res.status(500).json({ error: "Error cargando cargos", detalle: String(err) });
+  }
+});
+
 router.post("/admin/nosotros/cargos", requireAuth, requireRole("directivo", "administrador"), async (req, res): Promise<void> => {
   const payload = req.body ?? {};
   const codigo = normalizeText(payload.codigo);

@@ -5,31 +5,35 @@ import type { Translations } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { Search, RotateCcw, Save, CheckCircle, AlertCircle } from "lucide-react";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  nav: "Navegación",
-  menu: "Menú usuario",
-  common: "Comunes",
-  form: "Formularios",
-  auth: "Acceso",
-  contact: "Contacto",
-  home: "Inicio",
-  perfil: "Perfil",
-  eventos: "Eventos",
-  inscripciones: "Inscripciones",
-  pagos: "Pagos",
-  sugerencias: "Sugerencias",
-  grupo: "Grupo delegado",
-  grupo_inscripcion: "Inscripción grupo",
-  admin: "Admin general",
-  admin_roles: "Roles",
-  socios: "Socios",
-  textos: "Textos/Traducción",
-  demo: "Sistema",
-};
+const CATEGORY_PREFIXES = new Set([
+  "nav",
+  "menu",
+  "common",
+  "form",
+  "auth",
+  "contact",
+  "home",
+  "perfil",
+  "eventos",
+  "inscripciones",
+  "pagos",
+  "sugerencias",
+  "grupo",
+  "grupo_inscripcion",
+  "admin",
+  "admin_roles",
+  "socios",
+  "textos",
+  "demo",
+]);
 
 function getCategory(key: string): string {
   const prefix = key.split('.')[0];
-  return CATEGORY_LABELS[prefix] ?? prefix;
+  return CATEGORY_PREFIXES.has(prefix) ? prefix : prefix;
+}
+
+function getCategoryLabel(key: string, t: (k: string) => string): string {
+  return CATEGORY_PREFIXES.has(key) ? t(`textos.category.${key}`) : key;
 }
 
 function getOverrides(): Translations {
@@ -71,7 +75,7 @@ export default function AdminTextos() {
   const filteredKeys = useMemo(() => {
     return allKeys.filter((key) => {
       const cat = getCategory(key);
-      const matchCat = selectedCategory === "all" || CATEGORY_LABELS[key.split('.')[0]] === selectedCategory || cat === selectedCategory;
+      const matchCat = selectedCategory === "all" || cat === selectedCategory;
       if (!matchCat) return false;
       if (!search) return true;
       const base = baseDictionary[key];
@@ -166,7 +170,7 @@ export default function AdminTextos() {
       {modifiedCount > 0 && !saved && (
         <div className="mb-4 flex items-center gap-2 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-xl px-4 py-3 text-sm">
           <AlertCircle className="w-4 h-4" />
-          {modifiedCount} texto{modifiedCount !== 1 ? 's' : ''} modificado{modifiedCount !== 1 ? 's' : ''} sin guardar
+          {modifiedCount} {t("textos.unsaved")}
         </div>
       )}
 
@@ -188,7 +192,7 @@ export default function AdminTextos() {
         >
           <option value="all">{t("textos.all")}</option>
           {categories.filter((c) => c !== "all").map((cat) => (
-            <option key={cat} value={cat}>{cat}</option>
+            <option key={cat} value={cat}>{getCategoryLabel(cat, t)}</option>
           ))}
         </select>
       </div>
@@ -221,7 +225,7 @@ export default function AdminTextos() {
                 <tr key={key} className={`hover:bg-muted/10 transition-colors ${modified ? "bg-yellow-50/50" : ""}`}>
                   <td className="px-4 py-3 align-top">
                     <p className="font-mono text-xs text-muted-foreground">{key}</p>
-                    <p className="text-xs text-muted-foreground/60 mt-0.5">{getCategory(key)}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">{getCategoryLabel(getCategory(key), t)}</p>
                     {modified && (
                       <span className="inline-block mt-1 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-md">{t("textos.modified")}</span>
                     )}
@@ -262,7 +266,7 @@ export default function AdminTextos() {
           <div className="text-center py-12 text-muted-foreground">{t("common.no_data")}</div>
         )}
       </div>
-      <p className="text-xs text-muted-foreground mt-3">{filteredKeys.length} entradas</p>
+      <p className="text-xs text-muted-foreground mt-3">{filteredKeys.length} {t("textos.entries")}</p>
     </div>
   );
 }

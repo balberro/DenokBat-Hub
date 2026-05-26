@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
-import { FileText, Download, Users, GitBranch } from "lucide-react";
+import { FileText, Download, Users, GitBranch, ClipboardList } from "lucide-react";
 import { Link } from "wouter";
+import { useStore, getUserRoles } from "@/store/use-store";
+import HistorialActas from "@/pages/area/HistorialActas";
 
-type Tab = "presentacion" | "estatutos" | "organigrama" | "galeria";
+type Tab = "presentacion" | "estatutos" | "organigrama" | "galeria" | "actas";
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type NosotrosMember = {
@@ -445,10 +447,15 @@ function GaleriaTab({ lang }: { lang: string }) {
   );
 }
 
+const ACTAS_TAB_ROLES = new Set(["socio", "delegado", "directivo", "contable", "administrador"]);
+
 export default function QuienesSomos() {
   const { lang } = useTranslation();
   const [tab, setTab] = useState<Tab>("presentacion");
   const [data, setData] = useState<NosotrosData>(DEFAULT_DATA);
+  const user = useStore((s) => s.user);
+  const roles = user ? getUserRoles(user) : [];
+  const verActas = roles.some((r) => ACTAS_TAB_ROLES.has(r));
 
   useEffect(() => {
     let active = true;
@@ -492,6 +499,11 @@ export default function QuienesSomos() {
     { key: "estatutos", label: "Estatutos", labelEu: "Estatutuak", icon: <FileText className="w-4 h-4" /> },
     { key: "organigrama", label: "Organigrama", labelEu: "Organigrama", icon: <GitBranch className="w-4 h-4" /> },
     { key: "galeria", label: "Galería", labelEu: "Galeria", icon: <Users className="w-4 h-4" /> },
+    ...(verActas
+      ? ([
+          { key: "actas", label: "Actas", labelEu: "Aktak", icon: <ClipboardList className="w-4 h-4" /> },
+        ] as { key: Tab; label: string; labelEu: string; icon: ReactNode }[])
+      : []),
   ];
 
   return (
@@ -524,6 +536,7 @@ export default function QuienesSomos() {
         {tab === "estatutos" && <EstatutosTab lang={lang} data={data} />}
         {tab === "organigrama" && <OrganigramaTab lang={lang} data={data} />}
         {tab === "galeria" && <GaleriaTab lang={lang} />}
+        {tab === "actas" && verActas && <HistorialActas embedded />}
       </div>
     </div>
   );

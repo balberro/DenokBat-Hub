@@ -38,7 +38,7 @@ export default function AdminRoles() {
       const r = await fetch(`${API}/admin/roles/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) throw new Error("Error cargando usuarios para roles");
+      if (!r.ok) throw new Error(t("admin_roles.load_error"));
       const data = await r.json();
       const incomingUsers: AdminUser[] = Array.isArray(data?.users) ? data.users : [];
       const drafts: Record<number, RoleOption[]> = {};
@@ -54,7 +54,7 @@ export default function AdminRoles() {
     } catch {
       setUsers([]);
       setRoleDrafts({});
-      setNotice("No se pudieron cargar los usuarios.");
+      setNotice(t("admin_roles.load_error"));
     } finally {
       setLoading(false);
     }
@@ -84,12 +84,12 @@ export default function AdminRoles() {
         if (d?.error) throw new Error(String(d.error));
         const rawText = await r.text().catch(() => "");
         const shortText = rawText.trim().slice(0, 120);
-        throw new Error(shortText ? `HTTP ${r.status}: ${shortText}` : `HTTP ${r.status}: No se pudo actualizar el rol`);
+        throw new Error(shortText ? `HTTP ${r.status}: ${shortText}` : `HTTP ${r.status}: ${t("admin_roles.update_error")}`);
       }
       await load();
-      setNotice("Rol actualizado correctamente.");
+      setNotice(t("admin_roles.updated"));
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Error actualizando rol.");
+      setNotice(err instanceof Error ? err.message : t("admin_roles.update_error"));
     } finally {
       setSavingId(null);
     }
@@ -123,7 +123,7 @@ export default function AdminRoles() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={`${t("common.search")} (${t("common.name")} o usuario o email o rol)`}
+            placeholder={t("admin_roles.search_placeholder")}
             className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary text-sm"
           />
         </div>
@@ -192,7 +192,7 @@ export default function AdminRoles() {
                 })}
               </div>
               <Button size="sm" onClick={() => changeRole(u.id)} disabled={savingId === u.id}>
-                {savingId === u.id ? "Guardando..." : "Actualizar rol"}
+                {savingId === u.id ? t("common.saving") : t("admin_roles.update_role")}
               </Button>
             </div>
           </div>
@@ -200,13 +200,13 @@ export default function AdminRoles() {
       </div>
 
       {!loading && filtered.length === 0 && (
-        <p className="text-sm text-muted-foreground mt-4">No hay usuarios para ese filtro.</p>
+        <p className="text-sm text-muted-foreground mt-4">{t("admin_roles.no_users")}</p>
       )}
-      {loading && <p className="text-sm text-muted-foreground mt-4">Cargando usuarios...</p>}
+      {loading && <p className="text-sm text-muted-foreground mt-4">{t("admin_roles.loading_users")}</p>}
       {notice && <p className="text-sm text-muted-foreground mt-4">{notice}</p>}
       <div className="mt-4">
         <Button variant="outline" size="sm" disabled>
-          {filtered.length} usuarios
+          {filtered.length} {t("admin_roles.users_count")}
         </Button>
       </div>
     </div>

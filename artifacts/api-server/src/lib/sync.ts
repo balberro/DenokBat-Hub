@@ -192,7 +192,7 @@ export async function syncSocios(): Promise<SyncResult> {
           tipoSocio: tipologia === "honorifica" ? "honorifico" : "ordinario",
           tipologia,
           numeroSocio: numeroSocioValue,
-          genero: p.gender === "male" ? "H" : p.gender === "female" ? "F" : null,
+          genero: p.gender === "male" ? "M" : p.gender === "female" ? "F" : null,
           estado,
           odooSyncedAt: new Date(),
         };

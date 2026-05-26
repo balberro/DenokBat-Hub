@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,8 +15,13 @@ import Eventos from "@/pages/Eventos";
 import Divulgacion from "@/pages/Divulgacion";
 import Contacto from "@/pages/Contacto";
 import Privacidad from "@/pages/Privacidad";
+import AvisoLegal from "@/pages/AvisoLegal";
+import Cookies from "@/pages/Cookies";
 import Sugerencias from "@/pages/Sugerencias";
+import SugerenciasAportaciones from "@/pages/SugerenciasAportaciones";
+import SugerenciaAportar from "@/pages/SugerenciaAportar";
 import AreaPrivada from "@/pages/AreaPrivada";
+import ActaImpresion from "@/pages/ActaImpresion";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -36,9 +42,13 @@ function Router() {
       <Route path="/eventos" component={Eventos} />
       <Route path="/divulgacion" component={Divulgacion} />
       <Route path="/servicios" component={Services} />
+      <Route path="/sugerencias/aportaciones" component={SugerenciasAportaciones} />
+      <Route path="/sugerencias/aportar/:numero" component={SugerenciaAportar} />
       <Route path="/sugerencias" component={Sugerencias} />
       <Route path="/contacto" component={Contacto} />
       <Route path="/privacidad" component={Privacidad} />
+      <Route path="/aviso-legal" component={AvisoLegal} />
+      <Route path="/cookies" component={Cookies} />
       <Route path="/login" component={Login} />
       <Route path="/panel" component={Dashboard} />
 
@@ -50,12 +60,22 @@ function Router() {
       <Route path="/mis-sugerencias" component={AreaPrivada} />
       <Route path="/mi-grupo" component={AreaPrivada} />
       <Route path="/inscripciones-grupo" component={AreaPrivada} />
+      <Route path="/pagos-grupo" component={AreaPrivada} />
       <Route path="/admin/eventos" component={AreaPrivada} />
       <Route path="/admin/actividades" component={AreaPrivada} />
       <Route path="/admin/nosotros" component={AreaPrivada} />
       <Route path="/admin/datos-asociacion" component={AreaPrivada} />
+      <Route path="/admin/sugerencias" component={AreaPrivada} />
+      <Route path="/admin/propuestas-junta" component={AreaPrivada} />
+      <Route path="/admin/convocatorias" component={AreaPrivada} />
+      <Route path="/admin/actas" component={AreaPrivada} />
+      <Route path="/historial-actas" component={AreaPrivada} />
+      <Route path="/admin/expedientes" component={AreaPrivada} />
       <Route path="/admin/socios" component={AreaPrivada} />
       <Route path="/admin/contabilidad" component={AreaPrivada} />
+      <Route path="/admin/subvenciones/nueva" component={AreaPrivada} />
+      <Route path="/admin/subvenciones/en-curso" component={AreaPrivada} />
+      <Route path="/admin/subvenciones/historial" component={AreaPrivada} />
       <Route path="/admin/subvenciones" component={AreaPrivada} />
       <Route path="/admin/divulgacion" component={AreaPrivada} />
       <Route path="/admin/documentacion" component={AreaPrivada} />
@@ -73,14 +93,31 @@ function Router() {
   );
 }
 
+function ScrollToTop() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location]);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AppLayout>
-            <Router />
-          </AppLayout>
+          <ScrollToTop />
+          <Switch>
+            {/* Vista de impresión: sin AppLayout para que pueda imprimirse limpia */}
+            <Route path="/actas/:id/imprimir" component={ActaImpresion} />
+            <Route>
+              <AppLayout>
+                <Router />
+              </AppLayout>
+            </Route>
+          </Switch>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

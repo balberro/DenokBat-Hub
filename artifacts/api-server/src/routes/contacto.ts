@@ -183,27 +183,4 @@ router.post("/contacto", async (req, res): Promise<void> => {
   res.json({ success: true, message: "Solicitud enviada correctamente. Revisaremos sus datos y nos pondremos en contacto." });
 });
 
-router.post("/sugerencias", async (req, res): Promise<void> => {
-  const { nombre, email, categoria, mensaje } = req.body ?? {};
-
-  if (!categoria || !mensaje) {
-    res.status(400).json({ error: "Categoría y mensaje son obligatorios" });
-    return;
-  }
-
-  try {
-    await odooCall("helpdesk.ticket", "create", [{
-      name: `Sugerencia: ${categoria}`,
-      partner_name: nombre ?? "Anónimo",
-      partner_email: email ?? "",
-      description: mensaje,
-      tag_ids: [],
-    }]);
-  } catch {
-    // Si Odoo helpdesk no disponible, ok
-  }
-
-  res.json({ success: true, message: "Sugerencia enviada. ¡Gracias por tu aportación!" });
-});
-
 export default router;

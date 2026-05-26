@@ -81,6 +81,11 @@ export function Footer() {
               <li><Link href="/actividades" className="hover:text-primary transition-colors">{t('nav.activities')}</Link></li>
               <li><Link href="/servicios" className="hover:text-primary transition-colors">{t('nav.services')}</Link></li>
               <li><Link href="/sugerencias" className="hover:text-primary transition-colors">{t('nav.suggestions')}</Link></li>
+              <li>
+                <Link href="/sugerencias/aportaciones" className="hover:text-primary transition-colors">
+                  {lang === "eu" ? "Aportazioetarako iradokizunak" : "Sugerencias abiertas a aportaciones"}
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -89,9 +94,9 @@ export function Footer() {
         <div className="border-t border-gray-700 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-400">
           <p>© {new Date().getFullYear()} Denok Bat. {t("footer.rights_reserved")}</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-white transition-colors">{t("footer.legal_notice")}</a>
+            <Link href="/aviso-legal" className="hover:text-white transition-colors">{t("footer.legal_notice")}</Link>
             <Link href="/privacidad" className="hover:text-white transition-colors">{t("footer.privacy")}</Link>
-            <a href="#" className="hover:text-white transition-colors">{t("footer.cookies")}</a>
+            <Link href="/cookies" className="hover:text-white transition-colors">{t("footer.cookies")}</Link>
           </div>
         </div>
       </div>
