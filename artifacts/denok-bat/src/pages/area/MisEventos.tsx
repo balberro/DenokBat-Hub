@@ -75,6 +75,7 @@ function InscripcionModal({
   onSuccess: (insc: Inscripcion) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const buses = [fiesta.bus1, fiesta.bus2].filter(Boolean) as string[];
   const precio = parseFloat(fiesta.precio ?? "0");
   const [bus, setBus] = useState<string>(buses.length === 1 ? buses[0] : "");
@@ -83,7 +84,7 @@ function InscripcionModal({
 
   const confirm = async () => {
     if (buses.length > 0 && !bus) {
-      setErr(lang === "eu" ? "Aukeratu autobus geltokia" : "Elige una parada de autobús");
+      setErr(t("eventos.choose_bus_stop"));
       return;
     }
     setLoading(true);
@@ -100,9 +101,9 @@ function InscripcionModal({
         }),
       });
       const d = await r.json();
-      if (!r.ok) { setErr(d.error ?? "Error al inscribirse"); setLoading(false); return; }
+      if (!r.ok) { setErr(d.error ?? t("common.error")); setLoading(false); return; }
       onSuccess(d);
-    } catch { setErr("Error de conexión"); setLoading(false); }
+    } catch { setErr(t("common.network_error")); setLoading(false); }
   };
 
   return (
@@ -111,7 +112,7 @@ function InscripcionModal({
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-xl font-extrabold text-foreground">
-              {lang === "eu" ? "Izena eman" : "Inscripción"}
+              {t("eventos.enroll_form_title")}
             </h3>
             <p className="text-sm text-muted-foreground mt-0.5">
               {lang === "eu" ? (fiesta.nombreEu ?? fiesta.nombre) : fiesta.nombre}
@@ -126,7 +127,7 @@ function InscripcionModal({
           <div>
             <p className="text-sm font-bold text-foreground mb-2 flex items-center gap-2">
               <Bus className="w-4 h-4 text-primary" />
-              {lang === "eu" ? "Autobus geltokia" : "Parada de autobús"}
+              {t("eventos.bus_stop")}
             </p>
             <div className="space-y-2">
               {buses.map(b => (
@@ -138,7 +139,7 @@ function InscripcionModal({
               <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${bus === "__none__" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
                 <input type="radio" name="bus" value="__none__" checked={bus === "__none__"} onChange={() => setBus("__none__")} className="accent-primary" />
                 <span className="text-sm font-medium text-muted-foreground">
-                  {lang === "eu" ? "Autobus gabe" : "Sin autobús"}
+                  {t("eventos.no_bus")}
                 </span>
               </label>
             </div>
@@ -165,11 +166,11 @@ function InscripcionModal({
 
         <div className="flex gap-3 pt-1">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={loading}>
-            {lang === "eu" ? "Utzi" : "Cancelar"}
+            {t("eventos.cancel")}
           </Button>
           <Button className="flex-1 gap-2" onClick={confirm} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            {lang === "eu" ? "Berretsi" : "Confirmar"}
+            {t("eventos.confirm")}
           </Button>
         </div>
       </div>
@@ -180,17 +181,17 @@ function InscripcionModal({
 // ─── Section nav ──────────────────────────────────────────────────────────────
 
 function FiestaSectionNav({
-  lang, active, onChange, counts,
+  active, onChange, counts,
 }: {
-  lang: string;
   active: FiestaSection;
   onChange: (s: FiestaSection) => void;
   counts: { proxima: number; previstas: number; realizadas: number };
 }) {
-  const items: { key: FiestaSection; label: string; labelEu: string; activeClass: string }[] = [
-    { key: "proxima",    label: "Próxima",    labelEu: "Hurrengoa",    activeClass: "border-green-400 text-green-700 bg-green-50" },
-    { key: "previstas",  label: "Previstas",  labelEu: "Aurreikusiak", activeClass: "border-blue-400 text-blue-700 bg-blue-50" },
-    { key: "realizadas", label: "Realizadas", labelEu: "Egindakoak",   activeClass: "border-muted text-muted-foreground bg-muted/20" },
+  const { t } = useTranslation();
+  const items: { key: FiestaSection; labelKey: string; activeClass: string }[] = [
+    { key: "proxima",    labelKey: "eventos.next",     activeClass: "border-green-400 text-green-700 bg-green-50" },
+    { key: "previstas",  labelKey: "eventos.open_enrollment", activeClass: "border-blue-400 text-blue-700 bg-blue-50" },
+    { key: "realizadas", labelKey: "eventos.last_realized",   activeClass: "border-muted text-muted-foreground bg-muted/20" },
   ];
   return (
     <div className="grid grid-cols-3 gap-3 mb-6">
@@ -204,10 +205,10 @@ function FiestaSectionNav({
               : "border-border bg-white text-muted-foreground hover:border-primary/30"
           }`}
         >
-          <p className="text-sm font-bold">{lang === "eu" ? item.labelEu : item.label}</p>
+          <p className="text-sm font-bold">{t(item.labelKey)}</p>
           {counts[item.key] > 0 && (
             <p className="text-xs mt-0.5 opacity-60">
-              {counts[item.key]} {counts[item.key] > 1 ? (lang === "eu" ? "festa" : "fiestas") : (lang === "eu" ? "festa" : "fiesta")}
+              {counts[item.key]} {counts[item.key] > 1 ? t("eventos.fiestas_plural") : t("eventos.fiestas_singular")}
             </p>
           )}
         </button>
@@ -228,6 +229,7 @@ function ProximaCard({
   socioId: number;
   onInscriptionChange: (updated: Inscripcion[], fiestaId: number, delta: number) => void;
 }) {
+  const { t } = useTranslation();
   const myInsc = inscripciones.find(i => i.tipo === "fiesta" && i.eventoId === f.id) ?? null;
   const [showModal, setShowModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -272,7 +274,7 @@ function ProximaCard({
             <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-5">
               <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                {lang === "eu" ? "Hurrengoa" : "Próxima"}
+                {t("eventos.next")}
               </span>
               <h2 className="text-2xl font-extrabold text-white mt-2">{nombre}</h2>
             </div>
@@ -280,7 +282,7 @@ function ProximaCard({
         ) : (
           <div className="bg-linear-to-br from-primary/10 to-background p-6 border-b border-border">
             <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
-              {lang === "eu" ? "Hurrengoa" : "Próxima"}
+              {t("eventos.next")}
             </span>
             <h2 className="text-2xl font-extrabold text-foreground mt-2">{nombre}</h2>
           </div>
@@ -295,7 +297,7 @@ function ProximaCard({
                 <Calendar className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                    {lang === "eu" ? "Data" : "Fecha"}
+                    {t("eventos.date")}
                   </p>
                   <p className="font-semibold text-sm">{formatFecha(f.fecha)}</p>
                 </div>
@@ -306,7 +308,7 @@ function ProximaCard({
                 <Clock className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                    {lang === "eu" ? "Ordutegia" : "Horario"}
+                    {t("eventos.schedule")}
                   </p>
                   <p className="font-semibold text-sm">
                     {f.horaInicio ?? ""}{f.horaInicio && f.horaFin ? " – " : ""}{f.horaFin ?? ""}
@@ -319,7 +321,7 @@ function ProximaCard({
                 <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                    {lang === "eu" ? "Lekua" : "Lugar"}
+                    {t("eventos.place")}
                   </p>
                   <p className="font-semibold text-sm">{f.lugar}</p>
                 </div>
@@ -330,7 +332,7 @@ function ProximaCard({
                 <Euro className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs text-muted-foreground font-bold uppercase mb-0.5">
-                    {lang === "eu" ? "Prezioa" : "Precio"}
+                    {t("eventos.price")}
                   </p>
                   <p className="text-xl font-extrabold text-secondary">{precio}€</p>
                 </div>
@@ -343,7 +345,7 @@ function ProximaCard({
               <Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase mb-1">
-                  {lang === "eu" ? "Menua" : "Menú"}
+                  {t("eventos.menu")}
                 </p>
                 <p className="font-medium text-sm">{f.menu}</p>
               </div>
@@ -355,7 +357,7 @@ function ProximaCard({
               <Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase mb-1.5">
-                  {lang === "eu" ? "Autobus geltokiak" : "Paradas de autobús"}
+                  {t("eventos.bus_stops")}
                 </p>
                 <div className="space-y-1">
                   {f.bus1 && <p className="text-sm font-medium">📍 {f.bus1}</p>}
@@ -368,7 +370,7 @@ function ProximaCard({
           {f.programa && (
             <div className="bg-muted/30 rounded-2xl p-4">
               <p className="text-xs text-muted-foreground font-bold uppercase mb-2">
-                {lang === "eu" ? "Programa" : "Programa"}
+                {t("eventos.program")}
               </p>
               <p className="text-sm whitespace-pre-line leading-relaxed text-foreground">{f.programa}</p>
             </div>
@@ -377,7 +379,7 @@ function ProximaCard({
           {f.plazasDisponibles !== null && f.plazasDisponibles > 0 && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="w-4 h-4 text-secondary" />
-              <span>{f.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas disponibles"}</span>
+              <span>{f.plazasDisponibles} {t("eventos.places_available")}</span>
             </div>
           )}
 
@@ -388,14 +390,14 @@ function ProximaCard({
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-200 text-green-700 font-semibold text-sm">
                     <CheckCircle2 className="w-4 h-4" />
-                    {lang === "eu" ? "Izena emanda" : "Inscrito"}
+                    {t("eventos.enrolled_label")}
                     {myInsc.paradaBus && myInsc.paradaBus !== "__none__" && (
                       <span className="text-green-600 font-normal">· 📍 {myInsc.paradaBus}</span>
                     )}
                   </span>
                   <Button variant="outline" size="sm" onClick={handleCancel} disabled={cancelling} className="text-red-500 border-red-200 hover:bg-red-50">
                     {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                    {lang === "eu" ? "Baja eman" : "Cancelar inscripción"}
+                    {t("eventos.cancel_enroll")}
                   </Button>
                 </div>
                 {pendingPago && (
@@ -403,13 +405,8 @@ function ProximaCard({
                     <Euro className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-bold text-amber-700">
-                        {lang === "eu" ? "Ordainketa zain: " : "Pago pendiente: "}
+                        {t("eventos.payment_pending_prefix")}{" "}
                         <span>{parseFloat(pendingPago.importe)}€</span>
-                      </p>
-                      <p className="text-xs text-amber-600 mt-0.5">
-                        {lang === "eu"
-                          ? "Efektiboan ordaindu elkarteko bulegoan."
-                          : "Abona en efectivo en la oficina de la asociación."}
                       </p>
                     </div>
                   </div>
@@ -418,7 +415,7 @@ function ProximaCard({
             ) : (
               <Button size="lg" className="gap-2" onClick={() => setShowModal(true)}>
                 <Users className="w-4 h-4" />
-                {lang === "eu" ? "Izena eman" : "Inscribirme"}
+                {t("eventos.enroll_short")}
               </Button>
             )}
           </div>
@@ -431,10 +428,11 @@ function ProximaCard({
 // ─── Previstas list ───────────────────────────────────────────────────────────
 
 function PrevistasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
+  const { t } = useTranslation();
   if (fiestas.length === 0) {
     return (
       <p className="text-center py-12 text-muted-foreground">
-        {lang === "eu" ? "Ez dago fiesta aurreikusita" : "No hay fiestas previstas por el momento"}
+        {t("eventos.none_planned")}
       </p>
     );
   }
@@ -478,13 +476,14 @@ function PrevistasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
 // ─── Realizadas list ──────────────────────────────────────────────────────────
 
 function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
+  const { t } = useTranslation();
   const [searchName, setSearchName] = useState("");
   const [searchDate, setSearchDate] = useState("");
 
   if (fiestas.length === 0) {
     return (
       <p className="text-center py-12 text-muted-foreground">
-        {lang === "eu" ? "Ez dago oraindik fiesta eginik" : "Aún no hay fiestas realizadas"}
+        {t("eventos.none_realized")}
       </p>
     );
   }
@@ -508,14 +507,14 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
             <img src={latest.fotoUrl} alt={latestNombre} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
             <span className="absolute bottom-3 left-4 bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full">
-              {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
+              {t("eventos.last_realized")}
             </span>
           </div>
         )}
         <div className="p-5">
           {!latest.fotoUrl && (
             <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full inline-block mb-3">
-              {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
+              {t("eventos.last_realized")}
             </span>
           )}
           <h3 className="text-xl font-extrabold text-foreground mb-1">{latestNombre}</h3>
@@ -528,7 +527,7 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
               <div className="flex items-center gap-2 mb-2">
                 <BookOpen className="w-4 h-4 text-primary" />
                 <p className="text-xs font-bold text-foreground uppercase tracking-wide">
-                  {lang === "eu" ? "Memoria" : "Memoria de la fiesta"}
+                  {t("eventos.memory")}
                 </p>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">{latest.memoria}</p>
@@ -540,14 +539,14 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
       {rest.length > 0 && (
         <div>
           <h3 className="font-bold text-foreground mb-3">
-            {lang === "eu" ? "Aurreko festak" : "Fiestas anteriores"}
+            {t("eventos.previous_fiestas")}
           </h3>
           <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder={lang === "eu" ? "Izena bilatu…" : "Buscar por nombre…"}
+                placeholder={t("eventos.search_placeholder")}
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -565,13 +564,13 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
             {(searchName || searchDate) && (
               <button onClick={() => { setSearchName(""); setSearchDate(""); }}
                 className="text-sm text-muted-foreground hover:text-foreground underline px-2">
-                {lang === "eu" ? "Garbitu" : "Limpiar"}
+                {t("eventos.clear")}
               </button>
             )}
           </div>
           {filtered.length === 0 ? (
             <p className="text-center py-6 text-sm text-muted-foreground">
-              {lang === "eu" ? "Ez da emaitzarik aurkitu" : "Sin resultados"}
+              {t("eventos.no_results")}
             </p>
           ) : (
             <div className="space-y-2">
@@ -619,6 +618,7 @@ function RealizadasList({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) 
 // ─── Fiestas tab ──────────────────────────────────────────────────────────────
 
 function FiestasTab({ lang, token, userId }: { lang: string; token: string | null; userId: number }) {
+  const { t } = useTranslation();
   const [section, setSection] = useState<FiestaSection>("proxima");
   const [fiestas, setFiestas] = useState<Fiesta[]>([]);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
@@ -664,7 +664,7 @@ function FiestasTab({ lang, token, userId }: { lang: string; token: string | nul
 
   return (
     <div>
-      <FiestaSectionNav lang={lang} active={section} onChange={setSection} counts={counts} />
+      <FiestaSectionNav active={section} onChange={setSection} counts={counts} />
       {section === "proxima" && (
         proxima
           ? <ProximaCard
@@ -673,7 +673,7 @@ function FiestasTab({ lang, token, userId }: { lang: string; token: string | nul
               onInscriptionChange={handleInscriptionChange}
             />
           : <p className="text-center py-12 text-muted-foreground">
-              {lang === "eu" ? "Ez dago fiesta hurrengoa konfiguratuta" : "No hay próxima fiesta configurada"}
+              {t("eventos.no_next_configured")}
             </p>
       )}
       {section === "previstas"  && <PrevistasList fiestas={previstas}  lang={lang} />}
@@ -684,11 +684,12 @@ function FiestasTab({ lang, token, userId }: { lang: string; token: string | nul
 
 // ─── Placeholder ──────────────────────────────────────────────────────────────
 
-function ComingSoon({ label, lang }: { label: string; lang: string }) {
+function ComingSoon({ label }: { label: string }) {
+  const { t } = useTranslation();
   return (
     <div className="text-center py-16 text-muted-foreground bg-white rounded-2xl border border-border">
       <p className="text-lg font-semibold mb-1">{label}</p>
-      <p className="text-sm">{lang === "eu" ? "Laster eskuragarri" : "Próximamente disponible"}</p>
+      <p className="text-sm">{t("eventos.coming_soon")}</p>
     </div>
   );
 }
@@ -700,10 +701,10 @@ export default function MisEventos() {
   const { token, user } = useStore();
   const [tab, setTab] = useState<MainTab>("fiestas");
 
-  const TABS: { key: MainTab; label: string; labelEu: string; emoji: string }[] = [
-    { key: "fiestas",     label: "Fiestas",     labelEu: "Festak",   emoji: "🎉" },
-    { key: "excursiones", label: "Excursiones", labelEu: "Txangoak", emoji: "🚌" },
-    { key: "viajes",      label: "Viajes",      labelEu: "Bidaiak",  emoji: "✈️" },
+  const TABS: { key: MainTab; labelKey: string; emoji: string }[] = [
+    { key: "fiestas",     labelKey: "eventos.tab.fiestas",     emoji: "🎉" },
+    { key: "excursiones", labelKey: "eventos.tab.excursiones", emoji: "🚌" },
+    { key: "viajes",      labelKey: "eventos.tab.viajes",      emoji: "✈️" },
   ];
 
   return (
@@ -722,7 +723,7 @@ export default function MisEventos() {
             }`}
           >
             <span>{tb.emoji}</span>
-            {lang === "eu" ? tb.labelEu : tb.label}
+            {t(tb.labelKey)}
           </button>
         ))}
       </div>
@@ -730,8 +731,8 @@ export default function MisEventos() {
       {tab === "fiestas" && (
         <FiestasTab lang={lang} token={token} userId={user?.id ?? 1} />
       )}
-      {tab === "excursiones" && <ComingSoon label={lang === "eu" ? "Txangoak" : "Excursiones"} lang={lang} />}
-      {tab === "viajes"      && <ComingSoon label={lang === "eu" ? "Bidaiak" : "Viajes"} lang={lang} />}
+      {tab === "excursiones" && <ComingSoon label={t("eventos.tab.excursiones")} />}
+      {tab === "viajes"      && <ComingSoon label={t("eventos.tab.viajes")} />}
     </div>
   );
 }

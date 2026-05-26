@@ -122,20 +122,19 @@ function formatFecha(fecha: string | null, _lang: string): string {
 }
 
 function FiestaSectionNav({
-  lang,
   active,
   onChange,
   counts,
 }: {
-  lang: string;
   active: FiestaSection;
   onChange: (s: FiestaSection) => void;
   counts: { proxima: number; previstas: number; realizadas: number };
 }) {
-  const items: { key: FiestaSection; label: string; labelEu: string }[] = [
-    { key: "proxima", label: "Próxima", labelEu: "Hurrengoa" },
-    { key: "previstas", label: "Previstas", labelEu: "Aurreikusiak" },
-    { key: "realizadas", label: "Realizadas", labelEu: "Egindakoak" },
+  const { t } = useTranslation();
+  const items: { key: FiestaSection; labelKey: string }[] = [
+    { key: "proxima", labelKey: "eventos.next" },
+    { key: "previstas", labelKey: "eventos.open_enrollment" },
+    { key: "realizadas", labelKey: "eventos.last_realized" },
   ];
 
   return (
@@ -150,7 +149,7 @@ function FiestaSectionNav({
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          {lang === "eu" ? item.labelEu : item.label}
+          {t(item.labelKey)}
           {counts[item.key] > 0 ? ` (${counts[item.key]})` : ""}
         </button>
       ))}
@@ -159,6 +158,7 @@ function FiestaSectionNav({
 }
 
 function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: any }) {
+  const { t } = useTranslation();
   const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
   const descripcion = lang === "eu" ? (f.descripcionEu ?? f.descripcion) : f.descripcion;
   const precio = parseFloat(f.precio ?? "0");
@@ -171,7 +171,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
           <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6">
             <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-              {lang === "eu" ? "Hurrengoa" : "Próxima"}
+              {t("eventos.next")}
             </span>
             <h2 className="text-3xl font-extrabold text-white mt-2">{nombre}</h2>
           </div>
@@ -179,7 +179,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
       ) : (
         <div className="bg-linear-to-br from-primary/10 via-secondary/5 to-background p-6 rounded-xl mb-5">
           <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
-            {lang === "eu" ? "Hurrengoa" : "Próxima"}
+            {t("eventos.next")}
           </span>
           <h2 className="text-2xl font-bold text-foreground mt-3">{nombre}</h2>
         </div>
@@ -199,7 +199,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
-                  {lang === "eu" ? "Data" : "Fecha"}
+                  {t("eventos.date")}
                 </p>
                 <p className="font-semibold text-foreground">{formatFecha(f.fecha, lang)}</p>
               </div>
@@ -213,7 +213,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
-                  {lang === "eu" ? "Ordutegia" : "Horario"}
+                  {t("eventos.schedule")}
                 </p>
                 <p className="font-semibold text-foreground">
                   {f.horaInicio ?? ""}{f.horaInicio && f.horaFin ? " – " : ""}{f.horaFin ?? ""}
@@ -229,7 +229,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
-                  {lang === "eu" ? "Lekua" : "Lugar"}
+                  {t("eventos.place")}
                 </p>
                 <p className="font-semibold text-foreground">{f.lugar}</p>
               </div>
@@ -243,7 +243,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-0.5">
-                  {lang === "eu" ? "Prezioa" : "Precio"}
+                  {t("eventos.price")}
                 </p>
                 <p className="text-2xl font-extrabold text-secondary">{precio}€</p>
               </div>
@@ -257,7 +257,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
               <Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-1">
-                  {lang === "eu" ? "Menua" : "Menú"}
+                  {t("eventos.menu")}
                 </p>
                 <p className="text-foreground font-medium">{f.menu}</p>
               </div>
@@ -271,7 +271,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
               <Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-2">
-                  {lang === "eu" ? "Autobus geltokiak" : "Paradas de autobús"}
+                  {t("eventos.bus_stops")}
                 </p>
                 <div className="space-y-1">
                   {f.bus1 && <p className="font-medium text-foreground">📍 {f.bus1}</p>}
@@ -285,7 +285,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
         {f.programa && (
           <div className="bg-muted/30 rounded-2xl p-5 mb-5">
             <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide mb-2">
-              {lang === "eu" ? "Programa" : "Programa"}
+              {t("eventos.program")}
             </p>
             <p className="text-foreground whitespace-pre-line leading-relaxed">{f.programa}</p>
           </div>
@@ -294,7 +294,7 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
         {f.plazasDisponibles !== null && f.plazasDisponibles > 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
             <Users className="w-4 h-4 text-secondary" />
-            <span>{f.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas disponibles"}</span>
+            <span>{f.plazasDisponibles} {t("eventos.places_available")}</span>
           </div>
         )}
 
@@ -302,12 +302,12 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
           {user ? (
             <Button size="lg" className="gap-2">
               <Users className="w-4 h-4" />
-              {lang === "eu" ? "Izena eman" : "Inscribirme"}
+              {t("eventos.enroll_short")}
             </Button>
           ) : (
             <Link href="/login">
               <Button size="lg" variant="outline" className="gap-2">
-                {lang === "eu" ? "Sartu izena emateko" : "Acceder para inscribirse"}
+                {t("eventos.access_to_enroll")}
               </Button>
             </Link>
           )}
@@ -318,10 +318,11 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
 }
 
 function FiestaPrevistas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
+  const { t } = useTranslation();
   if (fiestas.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
-        {lang === "eu" ? "Ez dago fiesta aurreikusita" : "No hay fiestas previstas por el momento"}
+        {t("eventos.none_planned")}
       </div>
     );
   }
@@ -376,13 +377,14 @@ function FiestaPrevistas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string })
 }
 
 function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }) {
+  const { t } = useTranslation();
   const [searchName, setSearchName] = useState("");
   const [searchDate, setSearchDate] = useState("");
 
   if (fiestas.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
-        {lang === "eu" ? "Ez dago oraindik fiesta eginik" : "Aún no hay fiestas realizadas"}
+        {t("eventos.none_realized")}
       </div>
     );
   }
@@ -412,7 +414,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
             <div className="absolute inset-0 bg-linear-to-t from-black/50 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-5">
               <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full">
-                {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
+                {t("eventos.last_realized")}
               </span>
             </div>
           </div>
@@ -420,7 +422,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
         <div className="p-6">
           {!latest.fotoUrl && (
             <span className="bg-muted text-muted-foreground text-xs font-bold px-3 py-1 rounded-full inline-block mb-4">
-              {lang === "eu" ? "Azken egindakoa" : "Última realizada"}
+              {t("eventos.last_realized")}
             </span>
           )}
           <h3 className="text-xl font-bold text-foreground mb-1">{latestNombre}</h3>
@@ -444,7 +446,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
             <div className="bg-muted/30 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-2">
                 <BookOpen className="w-4 h-4 text-primary" />
-                <p className="font-bold text-sm text-foreground">{lang === "eu" ? "Memoria" : "Memoria de la fiesta"}</p>
+                <p className="font-bold text-sm text-foreground">{t("eventos.memory")}</p>
               </div>
               <p className="text-muted-foreground leading-relaxed">{latest.memoria}</p>
             </div>
@@ -456,7 +458,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
       {rest.length > 0 && (
         <div>
           <h3 className="text-lg font-bold text-foreground mb-4">
-            {lang === "eu" ? "Aurreko festak" : "Fiestas anteriores"}
+            {t("eventos.previous_fiestas")}
           </h3>
 
           <div className="flex flex-col sm:flex-row gap-3 mb-5">
@@ -464,7 +466,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder={lang === "eu" ? "Izena bilatu…" : "Buscar por nombre…"}
+                placeholder={t("eventos.search_placeholder")}
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 text-sm border border-border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -484,14 +486,14 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
                 onClick={() => { setSearchName(""); setSearchDate(""); }}
                 className="text-sm text-muted-foreground hover:text-foreground underline"
               >
-                {lang === "eu" ? "Garbitu" : "Limpiar"}
+                {t("eventos.clear")}
               </button>
             )}
           </div>
 
           {filtered.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground text-sm">
-              {lang === "eu" ? "Ez da emaitzarik aurkitu" : "No hay resultados para esa búsqueda"}
+              {t("eventos.no_results_search")}
             </p>
           ) : (
             <div className="space-y-2">
@@ -523,7 +525,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
                     {f.memoria && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                         <BookOpen className="w-3.5 h-3.5" />
-                        {lang === "eu" ? "Memoria" : "Memoria"}
+                        {t("eventos.memory_short")}
                       </span>
                     )}
                   </div>
@@ -538,6 +540,7 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
 }
 
 function FiestasTab({ lang, user }: { lang: string; user: any }) {
+  const { t } = useTranslation();
   const [section, setSection] = useState<FiestaSection>("proxima");
   const [fiestas, setFiestas] = useState<Fiesta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -573,14 +576,14 @@ function FiestasTab({ lang, user }: { lang: string; user: any }) {
 
   return (
     <div>
-      <FiestaSectionNav lang={lang} active={section} onChange={setSection} counts={counts} />
+      <FiestaSectionNav active={section} onChange={setSection} counts={counts} />
 
       {section === "proxima" && (
         proxima ? (
           <FiestaCardProxima f={proxima} lang={lang} user={user} />
         ) : (
           <div className="text-center py-16 text-muted-foreground bg-white rounded-2xl border border-border">
-            {lang === "eu" ? "Ez dago fiesta hurrengoa konfiguratuta" : "No hay próxima fiesta configurada"}
+            {t("eventos.no_next_configured")}
           </div>
         )
       )}
@@ -592,6 +595,7 @@ function FiestasTab({ lang, user }: { lang: string; user: any }) {
 }
 
 function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
+  const { t } = useTranslation();
   const [subTab, setSubTab] = useState<"proxima" | "previstas" | "realizadas">("proxima");
   const [detail, setDetail] = useState<typeof EXCURSIONES[0] | null>(null);
 
@@ -603,7 +607,7 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
     return (
       <div>
         <button onClick={() => setDetail(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
-          <ChevronLeft className="w-4 h-4" /> {lang === "eu" ? "Itzuli" : "Volver"}
+          <ChevronLeft className="w-4 h-4" /> {t("eventos.back")}
         </button>
         <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
           <div className="bg-linear-to-br from-secondary/10 to-background p-8">
@@ -615,25 +619,25 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
           </div>
           <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <div className="flex gap-3"><Calendar className="w-5 h-5 text-primary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{lang === "eu" ? "Data" : "Fecha"}</p><p className="font-semibold">{detail.fecha}</p></div></div>
-              <div className="flex gap-3"><MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{lang === "eu" ? "Helmuga" : "Destino"}</p><p className="font-semibold">{detail.destino}</p></div></div>
-              <div className="flex gap-3"><Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{lang === "eu" ? "Autobus geltokiak" : "Paradas de autobús"}</p><p className="font-semibold">{detail.paradabus}</p></div></div>
+              <div className="flex gap-3"><Calendar className="w-5 h-5 text-primary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{t("eventos.date")}</p><p className="font-semibold">{detail.fecha}</p></div></div>
+              <div className="flex gap-3"><MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{t("eventos.destination")}</p><p className="font-semibold">{detail.destino}</p></div></div>
+              <div className="flex gap-3"><Bus className="w-5 h-5 text-primary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{t("eventos.bus_stops")}</p><p className="font-semibold">{detail.paradabus}</p></div></div>
             </div>
             <div className="space-y-4">
-              <div className="flex gap-3"><Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{lang === "eu" ? "Bazkaria" : "Comida"}</p><p className="font-semibold">{detail.lugarComida}</p><p className="text-sm text-muted-foreground mt-1">{detail.menuComida}</p></div></div>
-              <div className="flex gap-3"><Users className="w-5 h-5 text-secondary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{lang === "eu" ? "Plazak" : "Plazas libres"}</p><p className="font-semibold">{detail.plazasDisponibles}</p></div></div>
-              <div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{lang === "eu" ? "Prezioa" : "Precio"}</p><p className="text-2xl font-extrabold text-secondary">{detail.precio}€</p></div>
+              <div className="flex gap-3"><Utensils className="w-5 h-5 text-secondary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{t("eventos.meal")}</p><p className="font-semibold">{detail.lugarComida}</p><p className="text-sm text-muted-foreground mt-1">{detail.menuComida}</p></div></div>
+              <div className="flex gap-3"><Users className="w-5 h-5 text-secondary shrink-0 mt-0.5" /><div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{t("eventos.free_places")}</p><p className="font-semibold">{detail.plazasDisponibles}</p></div></div>
+              <div><p className="text-xs text-muted-foreground uppercase font-bold mb-0.5">{t("eventos.price")}</p><p className="text-2xl font-extrabold text-secondary">{detail.precio}€</p></div>
             </div>
           </div>
           {detail.memoria && (
             <div className="px-8 pb-8">
-              <div className="bg-muted/30 rounded-2xl p-6"><BookOpen className="w-5 h-5 text-primary mb-2" /><h3 className="font-bold text-foreground mb-2">{lang === "eu" ? "Memoria" : "Memoria de la excursión"}</h3><p className="text-muted-foreground">{detail.memoria}</p></div>
+              <div className="bg-muted/30 rounded-2xl p-6"><BookOpen className="w-5 h-5 text-primary mb-2" /><h3 className="font-bold text-foreground mb-2">{t("eventos.memory_excursion")}</h3><p className="text-muted-foreground">{detail.memoria}</p></div>
             </div>
           )}
           {detail.estado === "proxima" && (
             <div className="px-8 pb-8">
-              {user ? <Button className="gap-2"><Users className="w-4 h-4" />{lang === "eu" ? "Izena eman" : "Inscribirme"}</Button>
-                : <Link href="/login"><Button>{lang === "eu" ? "Sartu izena emateko" : "Accede para inscribirte"}</Button></Link>}
+              {user ? <Button className="gap-2"><Users className="w-4 h-4" />{t("eventos.enroll_short")}</Button>
+                : <Link href="/login"><Button>{t("eventos.access_to_enroll_short")}</Button></Link>}
             </div>
           )}
         </div>
@@ -641,29 +645,32 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
     );
   }
 
+  const subTabLabel = (k: "proxima" | "previstas" | "realizadas") =>
+    k === "proxima" ? t("eventos.next") : k === "previstas" ? t("eventos.subnav.previstas") : t("eventos.subnav.realizadas");
+
   return (
     <div>
       <div className="flex gap-2 mb-6 border-b border-border">
         {(["proxima", "previstas", "realizadas"] as const).map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${subTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {tab === "proxima" ? (lang === "eu" ? "Hurrengoa" : "Próxima") : tab === "previstas" ? (lang === "eu" ? "Aurreikusiak" : "Previstas") : (lang === "eu" ? "Egindakoak" : "Realizadas")}
+            {subTabLabel(tab)}
           </button>
         ))}
       </div>
 
       {subTab === "proxima" && proxima && (
         <div className="bg-white rounded-2xl border border-primary/20 shadow-sm p-6 cursor-pointer hover:shadow-md transition-all" onClick={() => setDetail(proxima)}>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 mb-3 inline-block">{lang === "eu" ? "Hurrengoa" : "Próxima"}</span>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 mb-3 inline-block">{t("eventos.next")}</span>
           <h3 className="text-2xl font-bold text-foreground mb-2">{lang === "eu" ? proxima.nombreEu : proxima.nombre}</h3>
           <p className="text-muted-foreground mb-4">{lang === "eu" ? proxima.descripcionEu : proxima.descripcion}</p>
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-primary" />{proxima.fecha}</span>
             <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{proxima.destino}</span>
-            <span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-secondary" />{proxima.plazasDisponibles} {lang === "eu" ? "plaza libre" : "plazas libres"}</span>
+            <span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-secondary" />{proxima.plazasDisponibles} {t("eventos.free_places_inline")}</span>
             <span className="font-bold text-secondary">{proxima.precio}€</span>
           </div>
-          <div className="flex items-center gap-2 mt-4 text-sm font-semibold text-primary"><ArrowRight className="w-4 h-4" />{lang === "eu" ? "Xehetasunak ikusi" : "Ver detalles e inscripción"}</div>
+          <div className="flex items-center gap-2 mt-4 text-sm font-semibold text-primary"><ArrowRight className="w-4 h-4" />{t("eventos.see_details")}</div>
         </div>
       )}
 
@@ -694,7 +701,7 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
                   <h4 className="font-bold text-foreground">{lang === "eu" ? e.nombreEu : e.nombre}</h4>
                   <p className="text-sm text-muted-foreground">{e.fecha} · {e.destino}</p>
                 </div>
-                <span className="flex items-center gap-1 text-sm text-muted-foreground"><BookOpen className="w-4 h-4" />{lang === "eu" ? "Memoria" : "Con memoria"}</span>
+                <span className="flex items-center gap-1 text-sm text-muted-foreground"><BookOpen className="w-4 h-4" />{t("eventos.with_memory")}</span>
               </div>
             </div>
           ))}
@@ -705,6 +712,7 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
 }
 
 function ViajesTab({ lang, user }: { lang: string; user: any }) {
+  const { t } = useTranslation();
   const [subTab, setSubTab] = useState<"proximo" | "previstos" | "realizados">("proximo");
   const [detail, setDetail] = useState<typeof VIAJES[0] | null>(null);
 
@@ -716,7 +724,7 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
     return (
       <div>
         <button onClick={() => setDetail(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
-          <ChevronLeft className="w-4 h-4" /> {lang === "eu" ? "Itzuli" : "Volver"}
+          <ChevronLeft className="w-4 h-4" /> {t("eventos.back")}
         </button>
         <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
           <div className="bg-linear-to-br from-secondary/10 to-background p-8">
@@ -733,21 +741,21 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
               ))}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-muted/30 rounded-2xl p-4"><p className="text-xs text-muted-foreground font-bold uppercase mb-1">{lang === "eu" ? "Datak" : "Fechas"}</p><p className="font-bold">{detail.fechas}</p></div>
-              <div className="bg-muted/30 rounded-2xl p-4"><p className="text-xs text-muted-foreground font-bold uppercase mb-1">{lang === "eu" ? "Ostatua" : "Alojamiento"}</p><p className="font-bold">{detail.alojamiento}</p></div>
-              <div className="bg-muted/30 rounded-2xl p-4"><p className="text-xs text-muted-foreground font-bold uppercase mb-1">{lang === "eu" ? "Prezioa" : "Precio"}</p><p className="text-2xl font-extrabold text-secondary">{detail.precio}€</p></div>
+              <div className="bg-muted/30 rounded-2xl p-4"><p className="text-xs text-muted-foreground font-bold uppercase mb-1">{t("eventos.dates")}</p><p className="font-bold">{detail.fechas}</p></div>
+              <div className="bg-muted/30 rounded-2xl p-4"><p className="text-xs text-muted-foreground font-bold uppercase mb-1">{t("eventos.lodging")}</p><p className="font-bold">{detail.alojamiento}</p></div>
+              <div className="bg-muted/30 rounded-2xl p-4"><p className="text-xs text-muted-foreground font-bold uppercase mb-1">{t("eventos.price")}</p><p className="text-2xl font-extrabold text-secondary">{detail.precio}€</p></div>
             </div>
             {detail.estado !== "realizado" && (
-              <div className="flex items-center gap-2"><Users className="w-4 h-4 text-secondary" /><p className="text-muted-foreground">{detail.plazasDisponibles}/{detail.plazasTotal} {lang === "eu" ? "plaza libre" : "plazas libres"}</p></div>
+              <div className="flex items-center gap-2"><Users className="w-4 h-4 text-secondary" /><p className="text-muted-foreground">{detail.plazasDisponibles}/{detail.plazasTotal} {t("eventos.free_places_inline")}</p></div>
             )}
           </div>
           {detail.memoria && (
-            <div className="px-8 pb-8"><div className="bg-muted/30 rounded-2xl p-6"><BookOpen className="w-5 h-5 text-primary mb-2" /><h3 className="font-bold mb-2">{lang === "eu" ? "Memoria" : "Memoria del viaje"}</h3><p className="text-muted-foreground">{detail.memoria}</p></div></div>
+            <div className="px-8 pb-8"><div className="bg-muted/30 rounded-2xl p-6"><BookOpen className="w-5 h-5 text-primary mb-2" /><h3 className="font-bold mb-2">{t("eventos.memory_trip")}</h3><p className="text-muted-foreground">{detail.memoria}</p></div></div>
           )}
           {(detail.estado === "proximo") && (
             <div className="px-8 pb-8">
-              {user ? <Button><Users className="w-4 h-4 mr-2" />{lang === "eu" ? "Izena eman" : "Inscribirme"}</Button>
-                : <Link href="/login"><Button>{lang === "eu" ? "Sartu izena emateko" : "Accede para inscribirte"}</Button></Link>}
+              {user ? <Button><Users className="w-4 h-4 mr-2" />{t("eventos.enroll_short")}</Button>
+                : <Link href="/login"><Button>{t("eventos.access_to_enroll_short")}</Button></Link>}
             </div>
           )}
         </div>
@@ -755,28 +763,31 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
     );
   }
 
+  const subTabLabel = (k: "proximo" | "previstos" | "realizados") =>
+    k === "proximo" ? t("eventos.subnav.proximo") : k === "previstos" ? t("eventos.subnav.previstos") : t("eventos.subnav.realizados");
+
   return (
     <div>
       <div className="flex gap-2 mb-6 border-b border-border">
         {(["proximo", "previstos", "realizados"] as const).map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${subTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {tab === "proximo" ? (lang === "eu" ? "Hurrengoa" : "Próximo") : tab === "previstos" ? (lang === "eu" ? "Aurreikusiak" : "Previstos") : (lang === "eu" ? "Egindakoak" : "Realizados")}
+            {subTabLabel(tab)}
           </button>
         ))}
       </div>
 
       {subTab === "proximo" && proximo && (
         <div className="bg-white rounded-2xl border border-primary/20 shadow-sm p-6 cursor-pointer hover:shadow-md transition-all" onClick={() => setDetail(proximo)}>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 mb-3 inline-block">{lang === "eu" ? "Hurrengoa" : "Próximo"}</span>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 mb-3 inline-block">{t("eventos.subnav.proximo")}</span>
           <h3 className="text-2xl font-bold text-foreground mb-2">{lang === "eu" ? proximo.nombreEu : proximo.nombre}</h3>
           <p className="text-muted-foreground mb-4">{lang === "eu" ? proximo.descripcionEu : proximo.descripcion}</p>
           <div className="flex flex-wrap gap-4 text-sm">
             <span className="flex items-center gap-1.5 text-muted-foreground"><Calendar className="w-4 h-4 text-primary" />{proximo.fechas}</span>
             <span className="font-bold text-secondary text-lg">{proximo.precio}€</span>
-            <span className="text-muted-foreground">{proximo.plazasDisponibles}/{proximo.plazasTotal} {lang === "eu" ? "libre" : "plazas libres"}</span>
+            <span className="text-muted-foreground">{proximo.plazasDisponibles}/{proximo.plazasTotal} {t("eventos.free_places_inline")}</span>
           </div>
-          <div className="flex items-center gap-2 mt-4 text-sm font-semibold text-primary"><ArrowRight className="w-4 h-4" />{lang === "eu" ? "Xehetasunak ikusi" : "Ver detalles e inscripción"}</div>
+          <div className="flex items-center gap-2 mt-4 text-sm font-semibold text-primary"><ArrowRight className="w-4 h-4" />{t("eventos.see_details")}</div>
         </div>
       )}
 
@@ -804,7 +815,7 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
                   <h4 className="font-bold text-foreground">{lang === "eu" ? v.nombreEu : v.nombre}</h4>
                   <p className="text-sm text-muted-foreground">{v.fechas}</p>
                 </div>
-                <span className="flex items-center gap-1 text-sm text-muted-foreground"><BookOpen className="w-4 h-4" />{lang === "eu" ? "Memoria" : "Con memoria"}</span>
+                <span className="flex items-center gap-1 text-sm text-muted-foreground"><BookOpen className="w-4 h-4" />{t("eventos.with_memory")}</span>
               </div>
             </div>
           ))}
@@ -819,10 +830,10 @@ export default function Eventos() {
   const user = useStore(s => s.user);
   const [tab, setTab] = useState<Tab>("fiestas");
 
-  const TABS: { key: Tab; label: string; labelEu: string; emoji: string }[] = [
-    { key: "fiestas", label: "Fiestas", labelEu: "Festak", emoji: "🎉" },
-    { key: "excursiones", label: "Excursiones", labelEu: "Txangoak", emoji: "🚌" },
-    { key: "viajes", label: "Viajes", labelEu: "Bidaiak", emoji: "✈️" },
+  const TABS: { key: Tab; labelKey: string; emoji: string }[] = [
+    { key: "fiestas", labelKey: "eventos.tab.fiestas", emoji: "🎉" },
+    { key: "excursiones", labelKey: "eventos.tab.excursiones", emoji: "🚌" },
+    { key: "viajes", labelKey: "eventos.tab.viajes", emoji: "✈️" },
   ];
 
   return (
@@ -830,10 +841,10 @@ export default function Eventos() {
       <div className="bg-linear-to-b from-secondary/10 to-background py-16 border-b border-secondary/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-5xl font-extrabold text-foreground mb-4">
-            {lang === "eu" ? "Ekitaldiak" : "Eventos"}
+            {t("eventos.title")}
           </h1>
           <p className="text-xl text-muted-foreground">
-            {lang === "eu" ? "Festak, txangoak eta bidaiak bazkideen eskura" : "Fiestas, excursiones y viajes para todos los socios"}
+            {t("eventos.subtitle")}
           </p>
         </div>
       </div>
@@ -841,14 +852,14 @@ export default function Eventos() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tab navigation */}
         <div className="flex gap-3 mb-8 flex-wrap">
-          {TABS.map((t) => (
+          {TABS.map((tb) => (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-base font-bold transition-all ${tab === t.key ? "bg-primary text-white shadow-md shadow-primary/20" : "bg-white border border-border text-foreground hover:border-primary/30"}`}
+              key={tb.key}
+              onClick={() => setTab(tb.key)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-base font-bold transition-all ${tab === tb.key ? "bg-primary text-white shadow-md shadow-primary/20" : "bg-white border border-border text-foreground hover:border-primary/30"}`}
             >
-              <span>{t.emoji}</span>
-              {lang === "eu" ? t.labelEu : t.label}
+              <span>{tb.emoji}</span>
+              {t(tb.labelKey)}
             </button>
           ))}
         </div>

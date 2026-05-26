@@ -26,20 +26,20 @@ type Inscripcion = {
   pagos: Pago[];
 };
 
-const TIPO_LABEL: Record<string, { es: string; eu: string }> = {
-  fiesta:      { es: "Fiesta",      eu: "Festa" },
-  evento:      { es: "Evento",      eu: "Gertaera" },
-  actividad:   { es: "Actividad",   eu: "Jarduera" },
-  excursion:   { es: "Excursión",   eu: "Txangoa" },
-  viaje:       { es: "Viaje",       eu: "Bidaia" },
+const TIPO_KEY: Record<string, string> = {
+  fiesta:    "inscripciones.tipo.fiesta",
+  evento:    "inscripciones.tipo.evento",
+  actividad: "inscripciones.tipo.actividad",
+  excursion: "inscripciones.tipo.excursion",
+  viaje:     "inscripciones.tipo.viaje",
 };
 
-function estadoBadge(estado: string | null, lang: string) {
+function estadoBadge(estado: string | null, t: (k: string) => string) {
   if (estado === "confirmada" || estado === "confirmed") {
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
         <CheckCircle2 className="w-3 h-3" />
-        {lang === "eu" ? "Berretsia" : "Confirmada"}
+        {t("inscripciones.confirmed_short")}
       </span>
     );
   }
@@ -47,7 +47,7 @@ function estadoBadge(estado: string | null, lang: string) {
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
         <Clock3 className="w-3 h-3" />
-        {lang === "eu" ? "Itxaroten" : "Lista espera"}
+        {t("inscripciones.waiting_short")}
       </span>
     );
   }
@@ -76,7 +76,7 @@ export default function MisInscripciones() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      if (!r.ok) throw new Error("Error cargando inscripciones");
+      if (!r.ok) throw new Error(t("inscripciones.load_error"));
       const d = await r.json();
       setItems(d.items ?? []);
     } catch (e) {
@@ -84,7 +84,7 @@ export default function MisInscripciones() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -117,29 +117,21 @@ export default function MisInscripciones() {
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3 text-red-700 text-sm">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          {lang === "eu" ? "Errorea inskripzioak kargatzean" : "Error al cargar las inscripciones"}
+          {t("inscripciones.load_error")}
         </div>
       )}
 
       {items.length === 0 && !error ? (
         <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center text-muted-foreground">
           <Tag className="w-8 h-8 mx-auto mb-3 opacity-30" />
-          <p className="font-semibold">
-            {lang === "eu" ? "Oraindik ez daukazu inskripziorik" : "Todavía no tienes inscripciones"}
-          </p>
-          <p className="text-sm mt-1">
-            {lang === "eu"
-              ? "Joan Nire Ekitaldietara eta izena eman."
-              : "Ve a Mis Eventos e inscríbete en la próxima actividad."}
-          </p>
+          <p className="font-semibold">{t("inscripciones.none_yet")}</p>
+          <p className="text-sm mt-1">{t("inscripciones.go_events")}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {items.map(item => {
             const nombre = lang === "eu" ? (item.nombreEu ?? item.nombre ?? "—") : (item.nombre ?? "—");
-            const tipoLabel = lang === "eu"
-              ? (TIPO_LABEL[item.tipo]?.eu ?? item.tipo)
-              : (TIPO_LABEL[item.tipo]?.es ?? item.tipo);
+            const tipoLabel = TIPO_KEY[item.tipo] ? t(TIPO_KEY[item.tipo]) : item.tipo;
             const pendingPago = item.pagos?.find(p => p.estado === "pendiente") ?? null;
 
             return (
@@ -149,7 +141,7 @@ export default function MisInscripciones() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-foreground text-base">{nombre}</p>
-                      {estadoBadge(item.estado, lang)}
+                      {estadoBadge(item.estado, t)}
                     </div>
                     <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -176,12 +168,12 @@ export default function MisInscripciones() {
                         <Euro className="w-4 h-4 text-amber-600 shrink-0" />
                         <div className="flex-1 flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs text-amber-700 font-medium">
-                            {lang === "eu" ? "Ordainketa zain: " : "Pago pendiente: "}
+                            {t("inscripciones.pago_pendiente_prefix")}{" "}
                             <span className="font-bold">{parseFloat(pendingPago.importe)}€</span>
                           </p>
                           <Link href={`/mis-pagos?inscripcionId=${item.id}&pagoId=${pendingPago.id}&importe=${encodeURIComponent(String(pendingPago.importe ?? ""))}`}>
                             <Button size="sm" className="h-7 text-xs px-3">
-                              {lang === "eu" ? "Ordaindu" : "Pagar"}
+                              {t("inscripciones.pay")}
                             </Button>
                           </Link>
                         </div>
@@ -199,7 +191,7 @@ export default function MisInscripciones() {
                   >
                     {cancelling === item.id
                       ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : (lang === "eu" ? "Baja eman" : "Cancelar")}
+                      : t("inscripciones.cancel")}
                   </Button>
                 </div>
               </div>
