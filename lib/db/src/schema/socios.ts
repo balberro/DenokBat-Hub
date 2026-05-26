@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, char, date, timestamp, decimal } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, char, date, timestamp, decimal, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -27,6 +27,8 @@ export const sociosTable = pgTable("db_socios", {
   membershipHasta: date("membership_hasta"),
   membershipCuota: decimal("membership_cuota", { precision: 10, scale: 2 }),
   grupoId: integer("grupo_id"),
+  /** Asignación manual del rol contable; si true, los recálculos automáticos no la tocan. */
+  grupoManual: boolean("grupo_manual").notNull().default(false),
   avatarUrl: text("avatar_url"),
   dniDocAnversoUrl: text("dni_doc_anverso_url"),
   dniDocReversoUrl: text("dni_doc_reverso_url"),

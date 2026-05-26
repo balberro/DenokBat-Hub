@@ -50,7 +50,7 @@ export default function MisPagos() {
       const r = await fetch(`${API}/pagos`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) throw new Error("No se pudieron cargar los pagos");
+      if (!r.ok) throw new Error(t("pagos.error_load"));
       const d = await r.json();
       setPagos(Array.isArray(d?.items) ? d.items : []);
     } catch {
@@ -88,12 +88,12 @@ export default function MisPagos() {
         } catch {
           detail = "";
         }
-        throw new Error(detail || "No se pudo registrar el pago");
+        throw new Error(detail || t("pagos.error_register"));
       }
       await loadPagos();
       toast({
-        title: "Pago registrado",
-        description: "El pago se ha marcado como pagado correctamente.",
+        title: t("pagos.registered_title"),
+        description: t("pagos.registered_desc"),
       });
       if (prefInscripcionId) {
         setTimeout(() => {
@@ -102,8 +102,8 @@ export default function MisPagos() {
       }
     } catch (err) {
       toast({
-        title: "Error en el pago",
-        description: err instanceof Error ? err.message : "No se pudo registrar el pago.",
+        title: t("pagos.error_title"),
+        description: err instanceof Error ? err.message : t("pagos.error_register"),
         variant: "destructive",
       });
     } finally {
@@ -123,10 +123,10 @@ export default function MisPagos() {
 
       <div className="bg-white rounded-2xl border border-border shadow-sm p-5 mb-6 space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-foreground">Opciones de pago</h2>
+          <h2 className="text-lg font-bold text-foreground">{t("pagos.options_title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Selecciona el método y completa su formulario de pago.
-            {importePendiente ? ` Importe pendiente: ${importePendiente}€.` : ""}
+            {t("pagos.options_desc")}
+            {importePendiente ? ` ${t("pagos.pending_amount")}: ${importePendiente}€.` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -135,32 +135,32 @@ export default function MisPagos() {
             variant={metodoSeleccionado === "transferencia" ? "default" : "outline"}
             onClick={() => setMetodoSeleccionado("transferencia")}
           >
-            Transferencia
+            {t("pagos.transfer")}
           </Button>
           <Button
             type="button"
             variant={metodoSeleccionado === "tarjeta" ? "default" : "outline"}
             onClick={() => setMetodoSeleccionado("tarjeta")}
           >
-            Tarjeta
+            {t("pagos.card")}
           </Button>
         </div>
         {metodoSeleccionado === "transferencia" && (
           <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
-            <p className="font-semibold text-foreground">Formulario de pago por transferencia</p>
+            <p className="font-semibold text-foreground">{t("pagos.transfer_form")}</p>
             <p className="text-sm text-muted-foreground">IBAN: ES00 0000 0000 0000 0000 0000</p>
-            <p className="text-sm text-muted-foreground">Concepto: Nº inscripción o nombre completo.</p>
+            <p className="text-sm text-muted-foreground">{t("pagos.transfer_concept_hint")}</p>
             <Button size="sm" onClick={handlePay} disabled={!prefPagoId || paying}>
-              {paying ? "Registrando..." : "He realizado la transferencia"}
+              {paying ? t("common.registering") : t("pagos.mark_transfer_done")}
             </Button>
           </div>
         )}
         {metodoSeleccionado === "tarjeta" && (
           <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
-            <p className="font-semibold text-foreground">Formulario de pago con tarjeta</p>
-            <p className="text-sm text-muted-foreground">Pasarela de tarjeta (pendiente de integración).</p>
+            <p className="font-semibold text-foreground">{t("pagos.card_form")}</p>
+            <p className="text-sm text-muted-foreground">{t("pagos.card_pending")}</p>
             <Button size="sm" onClick={handlePay} disabled={!prefPagoId || paying}>
-              {paying ? "Registrando..." : "Pagar con tarjeta"}
+              {paying ? t("common.registering") : t("pagos.pay_card")}
             </Button>
           </div>
         )}
@@ -181,7 +181,7 @@ export default function MisPagos() {
           <tbody className="divide-y divide-border">
             {loading && (
               <tr>
-                <td className="px-5 py-4 text-muted-foreground" colSpan={6}>Cargando pagos...</td>
+                <td className="px-5 py-4 text-muted-foreground" colSpan={6}>{t("pagos.loading")}</td>
               </tr>
             )}
             {!loading && pagos.map((pago) => (
@@ -206,7 +206,7 @@ export default function MisPagos() {
             ))}
             {!loading && pagos.length === 0 && (
               <tr>
-                <td className="px-5 py-4 text-muted-foreground" colSpan={6}>No hay pagos todavía.</td>
+                <td className="px-5 py-4 text-muted-foreground" colSpan={6}>{t("pagos.none")}</td>
               </tr>
             )}
           </tbody>

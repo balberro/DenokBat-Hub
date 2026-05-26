@@ -39,6 +39,22 @@ async function hasColumn(columnName: string): Promise<boolean> {
   return Boolean(result.rows[0]?.ok);
 }
 
+async function dbSociosHasColumn(columnName: string): Promise<boolean> {
+  const result = await pool.query(
+    `
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'db_socios'
+        AND column_name = $1
+    ) AS ok
+    `,
+    [columnName],
+  );
+  return Boolean(result.rows[0]?.ok);
+}
+
 /** Convierte data URL a fichero bajo /uploads/perfil/; deja URLs ya públicas sin cambios. */
 async function persistAvatarIfNeeded(value: string | null): Promise<string | null> {
   if (value === null || value === undefined) return null;
@@ -141,8 +157,8 @@ async function ensureSocioSolicitudExtraColumns(): Promise<void> {
       ADD COLUMN IF NOT EXISTS solicitud_revision_mensaje text,
       ADD COLUMN IF NOT EXISTS solicitud_datos_extra_json text
     `);
-  } catch {
-    // Permisos / entorno sin ALTER
+  } catch (e) {
+    console.warn("[ensureSocioSolicitudExtraColumns] ALTER db_socios omitido o fallido:", e);
   }
 }
 
@@ -654,7 +670,9 @@ router.post("/perfil/solicitar-socio", requireAuth, async (req, res): Promise<vo
     const provincia = String(body?.provincia ?? "").trim();
     const dni = String(body?.dni ?? "").trim();
     const fechaNacimientoRaw = String(body?.fecha_nacimiento ?? "").trim();
-    const generoRaw = String(body?.genero ?? "").trim().toUpperCase();
+    const generoInput = String(body?.genero ?? "").trim().toUpperCase();
+    // Compatibilidad: si llega "H" (estándar anterior) lo aceptamos como "M".
+    const generoRaw = generoInput === "H" ? "M" : generoInput;
 
     if (
       !nombre ||
@@ -673,8 +691,8 @@ router.post("/perfil/solicitar-socio", requireAuth, async (req, res): Promise<vo
       });
       return;
     }
-    if (generoRaw !== "H" && generoRaw !== "F" && generoRaw !== "N") {
-      res.status(400).json({ error: "Género obligatorio: seleccione H, F o N." });
+    if (generoRaw !== "M" && generoRaw !== "F" && generoRaw !== "N") {
+      res.status(400).json({ error: "Género obligatorio: seleccione M, F o N." });
       return;
     }
 
@@ -686,6 +704,18 @@ router.post("/perfil/solicitar-socio", requireAuth, async (req, res): Promise<vo
     const fechaNacimientoSql = fechaBirth.iso;
 
     await ensureSocioSolicitudExtraColumns();
+    if (!(await dbSociosHasColumn("dni_doc_anverso_url"))) {
+      console.error(
+        "[POST /perfil/solicitar-socio] Falta esquema en db_socios: ejecutar en PostgreSQL (como owner) lib/db/fix-db-socios-solicitud-dni-pago.sql",
+      );
+      res.status(503).json({
+        error:
+          "La base de datos del servidor no está actualizada para las solicitudes de socio. Contacta con la asociación o el administrador del sistema.",
+        detalle:
+          "Falta la columna dni_doc_anverso_url en db_socios. Debe ejecutarse el script SQL fix-db-socios-solicitud-dni-pago.sql con un usuario con permisos ALTER.",
+      });
+      return;
+    }
 
     const solicitudOpts = await loadMembershipSolicitudOptionsFromDb();
     const metodoPago = String(body?.metodo_pago ?? "").trim();
@@ -1259,8 +1289,9 @@ router.put("/perfil/mi-socio", requireAuth, async (req, res): Promise<void> => {
     const dni = String(payload.dni ?? "").trim() || null;
     const fechaNacimientoRaw = String(payload.fecha_nacimiento ?? "").trim();
     const fechaNacimiento = fechaNacimientoRaw || null;
-    const generoRaw = String(payload.genero ?? "").trim().toUpperCase();
-    const genero = generoRaw === "H" || generoRaw === "F" || generoRaw === "N" ? generoRaw : null;
+    const generoInputUpd = String(payload.genero ?? "").trim().toUpperCase();
+    const generoRaw = generoInputUpd === "H" ? "M" : generoInputUpd;
+    const genero = generoRaw === "M" || generoRaw === "F" || generoRaw === "N" ? generoRaw : null;
 
     if (!nombre || !apellidos || !email || !telefono) {
       res.status(400).json({ error: "Nombre, apellidos, email y teléfono son obligatorios" });

@@ -5,7 +5,7 @@ ADD COLUMN IF NOT EXISTS tipo_socio varchar(30) DEFAULT 'ordinario';
 UPDATE db_socios
 SET tipo_socio = CASE
   WHEN fecha_nacimiento IS NOT NULL
-       AND EXTRACT(YEAR FROM age(current_date, fecha_nacimiento)) >= 85
+      AND EXTRACT(YEAR FROM age(current_date, fecha_nacimiento)) >= 85
     THEN 'honorifico'
   ELSE 'ordinario'
 END

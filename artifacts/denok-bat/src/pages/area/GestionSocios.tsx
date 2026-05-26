@@ -1,8 +1,9 @@
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, Edit, Trash2, Download } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/store/use-store";
+import GestionGrupos from "./GestionGrupos";
 
 const API = "/api";
 
@@ -26,6 +27,8 @@ type SocioRow = {
   avatarUrl?: string | null;
   poblacion?: string | null;
   provincia?: string | null;
+  grupoId?: number | null;
+  grupoManual?: boolean | null;
 };
 
 type SolicitudRow = {
@@ -118,6 +121,8 @@ type SocioForm = {
   provincia: string;
   estado: string;
   grupoId: string;
+  /** Asignación manual (protegida frente a recálculo por grupos). */
+  grupoManual: boolean;
   dni: string;
   genero: string;
   fechaNacimiento: string;
@@ -143,6 +148,7 @@ const EMPTY_FORM: SocioForm = {
   provincia: "",
   estado: "solicitante",
   grupoId: "",
+  grupoManual: false,
   dni: "",
   genero: "",
   fechaNacimiento: "",
@@ -163,6 +169,25 @@ const EMPTY_FORM: SocioForm = {
     crearEnOdoo: true,
   },
 };
+
+/**
+ * Columnas del listado de socios que se pueden ocultar progresivamente desde
+ * la izquierda al pulsar el botón "→". Las columnas fijas (foto, n.º, nombre,
+ * estado, tipología y acciones) permanecen siempre visibles; las que están
+ * aquí van saliendo del viewport en este orden.
+ */
+const SLIDABLE_COLS = [
+  "apellidos",
+  "dni",
+  "genero",
+  "fechaNacimiento",
+  "fechaFallecimiento",
+  "poblacion",
+  "provincia",
+  "telefono",
+  "fechaAlta",
+] as const;
+type SlidableCol = (typeof SLIDABLE_COLS)[number];
 
 export default function GestionSocios() {
   const { t, lang } = useTranslation();
@@ -188,14 +213,202 @@ export default function GestionSocios() {
   const [items, setItems] = useState<SocioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [showSecondaryColumns, setShowSecondaryColumns] = useState(true);
+  // Listado de socios: desplazamiento horizontal de columnas. Las columnas
+  // listadas en `SLIDABLE_COLS` se ocultan progresivamente desde la izquierda
+  // (empezando por "apellidos") al pulsar el botón → y se vuelven a mostrar
+  // con el botón ←. De este modo siempre caben las columnas en pantalla sin
+  // necesidad de un toggle "mostrar/ocultar secundarias".
+  const [colOffset, setColOffset] = useState(0);
+  const maxColOffset = SLIDABLE_COLS.length - 1;
+  const isColVisible = (c: SlidableCol) => SLIDABLE_COLS.indexOf(c) >= colOffset;
   const [selectedSocioId, setSelectedSocioId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<SocioForm>(EMPTY_FORM);
   const [notice, setNotice] = useState("");
-  const [subsection, setSubsection] = useState<"socios" | "solicitudes" | "contable" | "historico">("socios");
+  const [subsection, setSubsection] = useState<"socios" | "solicitudes" | "grupos" | "vinculacion" | "contable" | "historico">("socios");
+
+  // ── Vinculación usuario ↔ socio ───────────────────────────────────────────
+  type UsuarioNoVinculado = {
+    id: number;
+    username: string;
+    nombre: string | null;
+    apellidos: string | null;
+    email: string | null;
+    telefono: string | null;
+    rol: string | null;
+    avatarUrl: string | null;
+  };
+  type SocioNoVinculado = {
+    id: number;
+    numeroSocio: string | null;
+    nombre: string | null;
+    apellidos: string | null;
+    email: string | null;
+    telefono: string | null;
+    dni: string | null;
+    poblacion: string | null;
+    estado: string | null;
+  };
+
+  const [vincUsuariosLoading, setVincUsuariosLoading] = useState(false);
+  const [vincUsuariosBusqueda, setVincUsuariosBusqueda] = useState("");
+  const [vincUsuarios, setVincUsuarios] = useState<UsuarioNoVinculado[]>([]);
+  const [vincUsuarioSel, setVincUsuarioSel] = useState<UsuarioNoVinculado | null>(null);
+
+  const [vincSociosLoading, setVincSociosLoading] = useState(false);
+  const [vincSociosBusqueda, setVincSociosBusqueda] = useState("");
+  const [vincSocios, setVincSocios] = useState<SocioNoVinculado[]>([]);
+  const [vincSocioSel, setVincSocioSel] = useState<SocioNoVinculado | null>(null);
+  const [vincSaving, setVincSaving] = useState(false);
+  const [vincNotice, setVincNotice] = useState<string | null>(null);
+
+  type VinculoExistente = {
+    userId: number;
+    username: string;
+    userNombre: string | null;
+    userApellidos: string | null;
+    userEmail: string | null;
+    userRol: string | null;
+    socioId: number;
+    numeroSocio: string | null;
+    socioNombre: string | null;
+    socioApellidos: string | null;
+    socioEmail: string | null;
+    socioDni: string | null;
+    socioPoblacion: string | null;
+    socioEstado: string | null;
+  };
+  const [vincExistentesLoading, setVincExistentesLoading] = useState(false);
+  const [vincExistentesBusqueda, setVincExistentesBusqueda] = useState("");
+  const [vincExistentes, setVincExistentes] = useState<VinculoExistente[]>([]);
+
+  const loadVincUsuarios = async (q?: string) => {
+    if (!token) return;
+    setVincUsuariosLoading(true);
+    try {
+      const url = new URL(`${API}/socios/vinculacion/usuarios-no-vinculados`, window.location.origin);
+      if (q && q.trim()) url.searchParams.set("q", q.trim());
+      const r = await fetch(url.pathname + url.search, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(String(d?.error ?? r.status));
+      setVincUsuarios(Array.isArray(d?.items) ? d.items : []);
+    } catch (err) {
+      setVincNotice(err instanceof Error ? err.message : "Error");
+      setVincUsuarios([]);
+    } finally {
+      setVincUsuariosLoading(false);
+    }
+  };
+
+  const loadVincSocios = async (q?: string) => {
+    if (!token) return;
+    setVincSociosLoading(true);
+    try {
+      const url = new URL(`${API}/socios/vinculacion/socios-no-vinculados`, window.location.origin);
+      if (q && q.trim()) url.searchParams.set("q", q.trim());
+      const r = await fetch(url.pathname + url.search, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(String(d?.error ?? r.status));
+      setVincSocios(Array.isArray(d?.items) ? d.items : []);
+    } catch (err) {
+      setVincNotice(err instanceof Error ? err.message : "Error");
+      setVincSocios([]);
+    } finally {
+      setVincSociosLoading(false);
+    }
+  };
+
+  const loadVincExistentes = async (q?: string) => {
+    if (!token) return;
+    setVincExistentesLoading(true);
+    try {
+      const url = new URL(`${API}/socios/vinculacion/existentes`, window.location.origin);
+      if (q && q.trim()) url.searchParams.set("q", q.trim());
+      const r = await fetch(url.pathname + url.search, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(String(d?.error ?? r.status));
+      setVincExistentes(Array.isArray(d?.items) ? d.items : []);
+    } catch (err) {
+      setVincNotice(err instanceof Error ? err.message : "Error");
+      setVincExistentes([]);
+    } finally {
+      setVincExistentesLoading(false);
+    }
+  };
+
+  const vincularUsuarioSocio = async () => {
+    if (!token) return;
+    if (!vincUsuarioSel) {
+      setVincNotice(t("socios.vinculacion.choose_user_first"));
+      return;
+    }
+    if (!vincSocioSel) {
+      setVincNotice(t("socios.vinculacion.choose_socio_first"));
+      return;
+    }
+    setVincSaving(true);
+    setVincNotice(null);
+    try {
+      const r = await fetch(`${API}/socios/vinculacion/vincular`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId: vincUsuarioSel.id, socioId: vincSocioSel.id }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(String(d?.error ?? r.status));
+      setVincNotice(t("socios.vinculacion.linked_ok"));
+      setVincUsuarioSel(null);
+      setVincSocioSel(null);
+      await Promise.all([
+        loadVincUsuarios(vincUsuariosBusqueda),
+        loadVincSocios(vincSociosBusqueda),
+        loadVincExistentes(vincExistentesBusqueda),
+      ]);
+    } catch (err) {
+      setVincNotice(err instanceof Error ? err.message : "Error");
+    } finally {
+      setVincSaving(false);
+    }
+  };
+
+  const desvincularUsuario = async (userId: number) => {
+    if (!token) return;
+    setVincSaving(true);
+    setVincNotice(null);
+    try {
+      const r = await fetch(`${API}/socios/vinculacion/desvincular`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(String(d?.error ?? r.status));
+      setVincNotice(t("socios.vinculacion.unlinked_ok"));
+      await Promise.all([
+        loadVincUsuarios(vincUsuariosBusqueda),
+        loadVincSocios(vincSociosBusqueda),
+        loadVincExistentes(vincExistentesBusqueda),
+      ]);
+    } catch (err) {
+      setVincNotice(err instanceof Error ? err.message : "Error");
+    } finally {
+      setVincSaving(false);
+    }
+  };
   const [solicitudes, setSolicitudes] = useState<SolicitudRow[]>([]);
   const [solicitudesLoading, setSolicitudesLoading] = useState(false);
   const [solicitudExpandId, setSolicitudExpandId] = useState<number | null>(null);
@@ -351,7 +564,7 @@ export default function GestionSocios() {
   const loadCargos = async () => {
     if (!token) return;
     try {
-      const r = await fetch(`${API}/admin/nosotros`, {
+      const r = await fetch(`${API}/admin/nosotros/cargos`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error("No se pudieron cargar cargos");
@@ -424,25 +637,27 @@ export default function GestionSocios() {
     return "";
   };
 
-  const normalizeGeneroValue = (v: string | null | undefined): "H" | "M" | "F" | "" => {
+  // Códigos unificados de género (BD): M (Masculino), F (Femenino), N (Otros / no informado).
+  // "H" antiguo se trata como M por compatibilidad con datos heredados.
+  const normalizeGeneroValue = (v: string | null | undefined): "M" | "F" | "N" | "" => {
     const raw = String(v ?? "").toLowerCase().trim();
     if (!raw) return "";
-    // Sin heurística: mantenemos codificación de origen.
-    // H = hombre, M/F = códigos tal cual BD.
-    if (raw === "h" || raw === "hombre" || raw === "male" || raw === "masculino") return "H";
-    if (raw === "m" || raw === "mujer") return "M";
-    if (raw === "f" || raw === "female" || raw === "femenino") return "F";
-
+    if (raw === "m" || raw === "h" || raw === "masculino" || raw === "male" || raw === "hombre" || raw === "g" || raw === "gizon" || raw === "gizonezkoa") return "M";
+    if (raw === "f" || raw === "female" || raw === "femenino" || raw === "mujer" || raw === "e" || raw === "emakume" || raw === "emakumezkoa") return "F";
+    if (raw === "n" || raw === "x" || raw === "nb" || raw === "other" || raw === "otro") return "N";
     return "";
   };
 
   const normalizeGeneroRawToken = (v: string | null | undefined): string => {
-    const raw = String(v ?? "").toLowerCase().trim();
-    if (!raw) return "";
-    if (raw === "h" || raw === "hombre" || raw === "male" || raw === "masculino") return "H";
-    if (raw === "m" || raw === "mujer") return "M";
-    if (raw === "f" || raw === "female" || raw === "femenino") return "F";
-    return raw.toUpperCase();
+    return normalizeGeneroValue(v) || "";
+  };
+
+  // Etiqueta visible de la letra de género según idioma activo (M↔G, F↔E, N=N).
+  const generoCodeLabel = (code: string): string => {
+    if (code === "M") return t("socios.form.gender.code.male");
+    if (code === "F") return t("socios.form.gender.code.female");
+    if (code === "N") return t("socios.form.gender.code.nonbinary");
+    return "";
   };
 
   const applyColumnFilter = (raw: string | null | undefined, filter: ColumnFilter): boolean => {
@@ -508,12 +723,13 @@ export default function GestionSocios() {
   }, [items, search, columnSearch]);
 
   const genderRawStats = useMemo(() => {
-    const stats = { h: 0, m: 0, f: 0, other: 0 };
+    // m = Masculino (incluye "H" legacy), f = Femenino, n = Otros, other = vacío/desconocido.
+    const stats = { m: 0, f: 0, n: 0, other: 0 };
     for (const s of items) {
-      const raw = String(s.genero ?? "").toLowerCase().trim();
-      if (raw === "h") stats.h += 1;
-      else if (raw === "m") stats.m += 1;
-      else if (raw === "f") stats.f += 1;
+      const code = normalizeGeneroValue(s.genero);
+      if (code === "M") stats.m += 1;
+      else if (code === "F") stats.f += 1;
+      else if (code === "N") stats.n += 1;
       else stats.other += 1;
     }
     return stats;
@@ -584,7 +800,8 @@ export default function GestionSocios() {
       poblacion: source.poblacion ?? "",
       provincia: source.provincia ?? "",
       estado: normalizeEstadoForm(source.estado),
-      grupoId: "",
+      grupoId: source.grupoId != null && source.grupoId !== undefined ? String(source.grupoId) : "",
+      grupoManual: Boolean((source as { grupoManual?: boolean | null }).grupoManual),
       dni: source.dni ?? "",
       genero: normalizeGeneroValue(source.genero),
       fechaNacimiento: toDateInput(source.fechaNacimiento),
@@ -599,6 +816,38 @@ export default function GestionSocios() {
     });
     setNotice("");
     setShowForm(true);
+  };
+
+  const aplicarGrupoAutomaticoEdicion = async () => {
+    if (!token || !editingId) return;
+    setSaving(true);
+    setNotice("");
+    try {
+      const r = await fetch(`${API}/admin/socios/${editingId}/grupo-automatico`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) {
+        throw new Error(String(d?.error ?? d?.detalle ?? `HTTP ${r.status}`));
+      }
+      const r2 = await fetch(`${API}/socios/${editingId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const s = await r2.json();
+      if (r2.ok) {
+        setForm((p) => ({
+          ...p,
+          grupoId: s.grupoId != null ? String(s.grupoId) : "",
+          grupoManual: Boolean(s.grupoManual),
+        }));
+      }
+      setNotice(t("socios.form.notice.grupo_automatico_ok"));
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : t("socios.form.notice.error_saving"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const selectedSocio = selectedSocioId == null
@@ -699,12 +948,12 @@ export default function GestionSocios() {
 
   const isHonorificoForm = form.tipologia === "honorifica" || isHonorificoByBirthdate(form.fechaNacimiento);
 
-  const contableCargoOptions = useMemo(
+  const cargoOptions = useMemo(
     () =>
-      cargos.filter((cargo) => {
-        const codigo = String(cargo.codigo ?? "").toLowerCase();
-        const nombre = String(cargo.nombre ?? "").toLowerCase();
-        return codigo.includes("tesorer") || codigo.includes("contable") || nombre.includes("tesorer") || nombre.includes("contable");
+      [...cargos].sort((a, b) => {
+        const ambitoCmp = String(a.ambito ?? "").localeCompare(String(b.ambito ?? ""), "es");
+        if (ambitoCmp !== 0) return ambitoCmp;
+        return String(a.nombre ?? "").localeCompare(String(b.nombre ?? ""), "es");
       }),
     [cargos],
   );
@@ -907,6 +1156,25 @@ export default function GestionSocios() {
         >
           {t("socios.tabs.solicitudes")}
         </Button>
+        <Button
+          variant={subsection === "grupos" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSubsection("grupos")}
+        >
+          {t("socios.tabs.grupos")}
+        </Button>
+        <Button
+          variant={subsection === "vinculacion" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setSubsection("vinculacion");
+            void loadVincUsuarios();
+            void loadVincSocios();
+            void loadVincExistentes();
+          }}
+        >
+          {t("socios.tabs.vinculacion")}
+        </Button>
         <Button variant={subsection === "contable" ? "default" : "outline"} size="sm" onClick={() => { setSubsection("contable"); void loadHistorico({ ...contableFilters }); }}>
           {t("socios.tabs.query_positions")}
         </Button>
@@ -1070,6 +1338,233 @@ export default function GestionSocios() {
         </div>
       )}
 
+      {subsection === "grupos" && (
+        <div className="mb-8">
+          <GestionGrupos />
+        </div>
+      )}
+
+      {subsection === "vinculacion" && (
+        <div className="mb-8 rounded-2xl border border-border bg-white p-6 space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">{t("socios.vinculacion.title")}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t("socios.vinculacion.subtitle")}</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("socios.vinculacion.help")}</p>
+          </div>
+
+          {vincNotice ? (
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+              {vincNotice}
+            </div>
+          ) : null}
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-foreground">{t("socios.vinculacion.users_label")}</h3>
+                <span className="text-xs text-muted-foreground">{vincUsuarios.length}</span>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  value={vincUsuariosBusqueda}
+                  onChange={(e) => setVincUsuariosBusqueda(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void loadVincUsuarios(vincUsuariosBusqueda);
+                  }}
+                  onBlur={() => void loadVincUsuarios(vincUsuariosBusqueda)}
+                  placeholder={t("socios.vinculacion.search_users")}
+                  className="w-full pl-10 pr-3 py-2 rounded-lg border border-border bg-background text-sm"
+                />
+              </div>
+              {vincUsuariosLoading ? (
+                <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+              ) : vincUsuarios.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("socios.vinculacion.no_users")}</p>
+              ) : (
+                <ul className="max-h-80 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+                  {vincUsuarios.map((u) => {
+                    const selected = vincUsuarioSel?.id === u.id;
+                    const display = `${u.nombre ?? ""} ${u.apellidos ?? ""}`.trim() || u.username;
+                    return (
+                      <li
+                        key={u.id}
+                        className={`px-3 py-2 cursor-pointer ${selected ? "bg-primary/10" : "hover:bg-muted/30"}`}
+                        onClick={() => setVincUsuarioSel(u)}
+                      >
+                        <p className="text-sm font-medium text-foreground">{display}</p>
+                        <p className="text-xs text-muted-foreground">
+                          @{u.username}
+                          {u.email ? ` · ${u.email}` : ""}
+                          {u.rol ? ` · ${u.rol}` : ""}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-foreground">{t("socios.vinculacion.target_socio")}</h3>
+                <span className="text-xs text-muted-foreground">{vincSocios.length}</span>
+              </div>
+              {vincUsuarioSel ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                  <p className="font-medium text-foreground">
+                    {t("socios.vinculacion.selected_user")}:{" "}
+                    {`${vincUsuarioSel.nombre ?? ""} ${vincUsuarioSel.apellidos ?? ""}`.trim() ||
+                      vincUsuarioSel.username}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    @{vincUsuarioSel.username}
+                    {vincUsuarioSel.email ? ` · ${vincUsuarioSel.email}` : ""}
+                  </p>
+                </div>
+              ) : null}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  value={vincSociosBusqueda}
+                  onChange={(e) => setVincSociosBusqueda(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void loadVincSocios(vincSociosBusqueda);
+                  }}
+                  onBlur={() => void loadVincSocios(vincSociosBusqueda)}
+                  placeholder={t("socios.vinculacion.search_socios")}
+                  className="w-full pl-10 pr-3 py-2 rounded-lg border border-border bg-background text-sm"
+                />
+              </div>
+              {vincSociosLoading ? (
+                <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+              ) : vincSocios.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("socios.vinculacion.no_socios")}</p>
+              ) : (
+                <ul className="max-h-80 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+                  {vincSocios.map((s) => {
+                    const selected = vincSocioSel?.id === s.id;
+                    const display = `${s.apellidos ?? ""} ${s.nombre ?? ""}`.trim() || `#${s.id}`;
+                    return (
+                      <li
+                        key={s.id}
+                        className={`px-3 py-2 cursor-pointer ${selected ? "bg-primary/10" : "hover:bg-muted/30"}`}
+                        onClick={() => setVincSocioSel(s)}
+                      >
+                        <p className="text-sm font-medium text-foreground">{display}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.numeroSocio ? `Nº ${s.numeroSocio}` : `#${s.id}`}
+                          {s.dni ? ` · ${s.dni}` : ""}
+                          {s.email ? ` · ${s.email}` : ""}
+                          {s.poblacion ? ` · ${s.poblacion}` : ""}
+                          {s.estado ? ` · ${s.estado}` : ""}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  onClick={() => void vincularUsuarioSocio()}
+                  disabled={vincSaving || !vincUsuarioSel || !vincSocioSel}
+                >
+                  {vincSaving ? t("common.loading") : t("socios.vinculacion.link")}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => vincUsuarioSel && void desvincularUsuario(vincUsuarioSel.id)}
+                  disabled={vincSaving || !vincUsuarioSel}
+                >
+                  {t("socios.vinculacion.unlink")}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-foreground">{t("socios.vinculacion.existing_title")}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("socios.vinculacion.existing_subtitle")}</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{vincExistentes.length}</span>
+            </div>
+            <div className="relative max-w-xl">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                value={vincExistentesBusqueda}
+                onChange={(e) => setVincExistentesBusqueda(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void loadVincExistentes(vincExistentesBusqueda);
+                }}
+                onBlur={() => void loadVincExistentes(vincExistentesBusqueda)}
+                placeholder={t("socios.vinculacion.search_existing")}
+                className="w-full pl-10 pr-3 py-2 rounded-lg border border-border bg-background text-sm"
+              />
+            </div>
+            {vincExistentesLoading ? (
+              <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+            ) : vincExistentes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("socios.vinculacion.no_existing")}</p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-left">
+                    <tr>
+                      <th className="p-3 font-semibold">{t("socios.vinculacion.col_user")}</th>
+                      <th className="p-3 font-semibold">{t("socios.vinculacion.col_socio")}</th>
+                      <th className="p-3 font-semibold text-right">{t("socios.vinculacion.col_actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {vincExistentes.map((v) => {
+                      const userDisplay =
+                        `${v.userNombre ?? ""} ${v.userApellidos ?? ""}`.trim() || v.username;
+                      const socioDisplay =
+                        `${v.socioApellidos ?? ""} ${v.socioNombre ?? ""}`.trim() || `#${v.socioId}`;
+                      return (
+                        <tr key={`${v.userId}-${v.socioId}`}>
+                          <td className="p-3 align-top">
+                            <p className="font-medium text-foreground">{userDisplay}</p>
+                            <p className="text-xs text-muted-foreground">
+                              @{v.username}
+                              {v.userEmail ? ` · ${v.userEmail}` : ""}
+                              {v.userRol ? ` · ${v.userRol}` : ""}
+                            </p>
+                          </td>
+                          <td className="p-3 align-top">
+                            <p className="font-medium text-foreground">{socioDisplay}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {v.numeroSocio ? `Nº ${v.numeroSocio}` : `#${v.socioId}`}
+                              {v.socioDni ? ` · ${v.socioDni}` : ""}
+                              {v.socioEmail ? ` · ${v.socioEmail}` : ""}
+                              {v.socioPoblacion ? ` · ${v.socioPoblacion}` : ""}
+                              {v.socioEstado ? ` · ${v.socioEstado}` : ""}
+                            </p>
+                          </td>
+                          <td className="p-3 align-top text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={vincSaving}
+                              onClick={() => void desvincularUsuario(v.userId)}
+                            >
+                              {t("socios.vinculacion.unlink")}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {subsection === "contable" && (
         <div className="mb-8 rounded-2xl border border-border bg-white p-4 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">{t("socios.positions.query_title")}</h2>
@@ -1083,7 +1578,7 @@ export default function GestionSocios() {
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background"
               >
                 <option value="">{t("socios.positions.field.cargo")}</option>
-                {contableCargoOptions.map((c) => (
+                {cargoOptions.map((c) => (
                     <option key={c.id} value={c.id}>{`${lang === "eu" ? (c.nombreEu || c.nombre) : c.nombre} (${c.codigo})`}</option>
                 ))}
               </select>
@@ -1249,7 +1744,7 @@ export default function GestionSocios() {
                   <option value="fundador">fundador</option>
                 </select>
                 <Button onClick={saveCargoFromAsignacion} disabled={saving}>
-                  {saving ? t("common.saving") : "Modificar / Crear"}
+                  {saving ? t("common.saving") : t("socios.form.modify_create")}
                 </Button>
               </div>
             </div>
@@ -1302,9 +1797,9 @@ export default function GestionSocios() {
             <input value={form.dni} onChange={(e) => setForm((p) => ({ ...p, dni: e.target.value }))} placeholder={t("socios.form.dni_nif")} className="px-3 py-2 rounded-lg border border-border bg-background" />
             <select value={form.genero} onChange={(e) => setForm((p) => ({ ...p, genero: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background">
               <option value="">{t("socios.form.gender.empty")}</option>
-              <option value="H">{t("socios.form.gender.male")}</option>
-              <option value="M">M</option>
+              <option value="M">{t("socios.form.gender.male")}</option>
               <option value="F">{t("socios.form.gender.female")}</option>
+              <option value="N">{t("socios.form.gender.nonbinary")}</option>
             </select>
             <input value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} placeholder={t("common.email")} className="px-3 py-2 rounded-lg border border-border bg-background" />
             <input value={form.telefono} onChange={(e) => setForm((p) => ({ ...p, telefono: e.target.value }))} placeholder={t("common.phone")} className="px-3 py-2 rounded-lg border border-border bg-background" />
@@ -1329,7 +1824,27 @@ export default function GestionSocios() {
               <option value="rechazado">{t("socios.form.status.rechazado")}</option>
               <option value="baja">{t("socios.form.status.baja")}</option>
             </select>
-            <input value={form.grupoId} onChange={(e) => setForm((p) => ({ ...p, grupoId: e.target.value }))} placeholder={t("socios.form.group_id_optional")} className="px-3 py-2 rounded-lg border border-border bg-background" />
+            <div className="md:col-span-3 flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={form.grupoId}
+                  onChange={(e) => setForm((p) => ({ ...p, grupoId: e.target.value }))}
+                  placeholder={t("socios.form.group_id_optional")}
+                  className="px-3 py-2 rounded-lg border border-border bg-background min-w-[140px] flex-1 max-w-xs"
+                />
+                {form.grupoManual ? (
+                  <span className="text-xs font-semibold text-primary px-2 py-1 rounded-md bg-primary/10 whitespace-nowrap">
+                    {t("socios.form.grupo_manual_badge")}
+                  </span>
+                ) : null}
+                {editingId ? (
+                  <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void aplicarGrupoAutomaticoEdicion()}>
+                    {t("socios.form.grupo_automatico_btn")}
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-xs text-muted-foreground">{t("socios.form.grupo_help")}</p>
+            </div>
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium text-foreground">{t("socios.form.photo.label")}</p>
@@ -1439,22 +1954,42 @@ export default function GestionSocios() {
         </Button>
       </div>
       <div className="mb-3">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           <Button size="sm" variant="outline" onClick={clearFilters}>
             {t("socios.filters.clear")}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowSecondaryColumns((v) => !v)}
-          >
-            {showSecondaryColumns ? t("socios.columns.hide_secondary") : t("socios.columns.show_secondary")}
-          </Button>
+          <div className="flex gap-1 items-center">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={colOffset === 0}
+              onClick={() => setColOffset((o) => Math.max(0, o - 1))}
+              title={t("socios.columns.scroll_left")}
+              aria-label={t("socios.columns.scroll_left")}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={colOffset >= maxColOffset}
+              onClick={() => setColOffset((o) => Math.min(maxColOffset, o + 1))}
+              title={t("socios.columns.scroll_right")}
+              aria-label={t("socios.columns.scroll_right")}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <span className="text-xs text-muted-foreground ml-1">
+              {`${colOffset + 1}/${SLIDABLE_COLS.length}`}
+            </span>
+          </div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-x-auto">
-        <table className="w-full text-sm min-w-[980px]">
+        <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr onKeyDown={(e) => {
               if (e.key === "Enter") applyFilters();
@@ -1462,15 +1997,15 @@ export default function GestionSocios() {
               <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.photo.label")}</th>
               <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.member_number")}</th>
               <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.name")}</th>
-              <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.surname")}</th>
-              <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.dni_nif")}</th>
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.gender")}</th>}
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.birthdate")}</th>}
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.deathdate")}</th>}
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.city")}</th>}
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.province")}</th>}
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.phone")}</th>}
-              {showSecondaryColumns && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.join_date")}</th>}
+              {isColVisible("apellidos") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.surname")}</th>}
+              {isColVisible("dni") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.dni_nif")}</th>}
+              {isColVisible("genero") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.gender")}</th>}
+              {isColVisible("fechaNacimiento") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.birthdate")}</th>}
+              {isColVisible("fechaFallecimiento") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.form.deathdate")}</th>}
+              {isColVisible("poblacion") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.city")}</th>}
+              {isColVisible("provincia") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.province")}</th>}
+              {isColVisible("telefono") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.phone")}</th>}
+              {isColVisible("fechaAlta") && <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("socios.join_date")}</th>}
               <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.status")}</th>
               <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Tipología</th>
               <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t("common.actions")}</th>
@@ -1503,7 +2038,7 @@ export default function GestionSocios() {
                   <input value={columnSearch.nombre.value} onChange={(e) => setColumnSearch((p) => ({ ...p, nombre: { ...p.nombre, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.nombre.op === "empty" || columnSearch.nombre.op === "notEmpty"} />
                 </div>
               </th>
-              <th className="px-2 py-2">
+              {isColVisible("apellidos") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.apellidos.op} onChange={(e) => setColumnSearch((p) => ({ ...p, apellidos: { ...p.apellidos, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1515,8 +2050,8 @@ export default function GestionSocios() {
                   </select>
                   <input value={columnSearch.apellidos.value} onChange={(e) => setColumnSearch((p) => ({ ...p, apellidos: { ...p.apellidos, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.apellidos.op === "empty" || columnSearch.apellidos.op === "notEmpty"} />
                 </div>
-              </th>
-              <th className="px-2 py-2">
+              </th>}
+              {isColVisible("dni") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.dni.op} onChange={(e) => setColumnSearch((p) => ({ ...p, dni: { ...p.dni, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1528,22 +2063,22 @@ export default function GestionSocios() {
                   </select>
                   <input value={columnSearch.dni.value} onChange={(e) => setColumnSearch((p) => ({ ...p, dni: { ...p.dni, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.dni.op === "empty" || columnSearch.dni.op === "notEmpty"} />
                 </div>
-              </th>
-              {showSecondaryColumns && <th className="px-2 py-2">
+              </th>}
+              {isColVisible("genero") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select
                     value={columnSearch.genero.value}
                     onChange={(e) => setColumnSearch((p) => ({ ...p, genero: { op: "equals", value: e.target.value } }))}
                     className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs"
                   >
-                    <option value="">Todos</option>
+                    <option value="">{t("common.all")}</option>
                     {genderRawOptions.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                      <option key={opt} value={opt}>{generoCodeLabel(opt) || opt}</option>
                     ))}
                   </select>
                 </div>
               </th>}
-              {showSecondaryColumns && <th className="px-2 py-2">
+              {isColVisible("fechaNacimiento") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.fechaNacimiento.op} onChange={(e) => setColumnSearch((p) => ({ ...p, fechaNacimiento: { ...p.fechaNacimiento, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1556,7 +2091,7 @@ export default function GestionSocios() {
                   <input value={columnSearch.fechaNacimiento.value} onChange={(e) => setColumnSearch((p) => ({ ...p, fechaNacimiento: { ...p.fechaNacimiento, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.fechaNacimiento.op === "empty" || columnSearch.fechaNacimiento.op === "notEmpty"} />
                 </div>
               </th>}
-              {showSecondaryColumns && <th className="px-2 py-2">
+              {isColVisible("fechaFallecimiento") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.fechaFallecimiento.op} onChange={(e) => setColumnSearch((p) => ({ ...p, fechaFallecimiento: { ...p.fechaFallecimiento, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1569,7 +2104,7 @@ export default function GestionSocios() {
                   <input value={columnSearch.fechaFallecimiento.value} onChange={(e) => setColumnSearch((p) => ({ ...p, fechaFallecimiento: { ...p.fechaFallecimiento, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.fechaFallecimiento.op === "empty" || columnSearch.fechaFallecimiento.op === "notEmpty"} />
                 </div>
               </th>}
-              {showSecondaryColumns && <th className="px-2 py-2">
+              {isColVisible("poblacion") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.poblacion.op} onChange={(e) => setColumnSearch((p) => ({ ...p, poblacion: { ...p.poblacion, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1582,7 +2117,7 @@ export default function GestionSocios() {
                   <input value={columnSearch.poblacion.value} onChange={(e) => setColumnSearch((p) => ({ ...p, poblacion: { ...p.poblacion, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.poblacion.op === "empty" || columnSearch.poblacion.op === "notEmpty"} />
                 </div>
               </th>}
-              {showSecondaryColumns && <th className="px-2 py-2">
+              {isColVisible("provincia") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.provincia.op} onChange={(e) => setColumnSearch((p) => ({ ...p, provincia: { ...p.provincia, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1595,7 +2130,7 @@ export default function GestionSocios() {
                   <input value={columnSearch.provincia.value} onChange={(e) => setColumnSearch((p) => ({ ...p, provincia: { ...p.provincia, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.provincia.op === "empty" || columnSearch.provincia.op === "notEmpty"} />
                 </div>
               </th>}
-              {showSecondaryColumns && <th className="px-2 py-2">
+              {isColVisible("telefono") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.telefono.op} onChange={(e) => setColumnSearch((p) => ({ ...p, telefono: { ...p.telefono, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1608,7 +2143,7 @@ export default function GestionSocios() {
                   <input value={columnSearch.telefono.value} onChange={(e) => setColumnSearch((p) => ({ ...p, telefono: { ...p.telefono, value: e.target.value } }))} placeholder={t("common.search")} className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs" disabled={columnSearch.telefono.op === "empty" || columnSearch.telefono.op === "notEmpty"} />
                 </div>
               </th>}
-              {showSecondaryColumns && <th className="px-2 py-2">
+              {isColVisible("fechaAlta") && <th className="px-2 py-2">
                 <div className="space-y-1">
                   <select value={columnSearch.fechaAlta.op} onChange={(e) => setColumnSearch((p) => ({ ...p, fechaAlta: { ...p.fechaAlta, op: e.target.value as FilterOp } }))} className="w-full px-2 py-1 rounded-md border border-border bg-white text-[11px]">
                     <option value="contains">contiene</option>
@@ -1628,7 +2163,7 @@ export default function GestionSocios() {
                     onChange={(e) => setColumnSearch((p) => ({ ...p, estado: { op: "equals", value: e.target.value } }))}
                     className="w-full px-2 py-1 rounded-md border border-border bg-white text-xs"
                   >
-                    <option value="">Todos</option>
+                    <option value="">{t("common.all")}</option>
                     <option value="activo">{t("socios.form.status.active")}</option>
                     <option value="solicitante">{t("socios.form.status.solicitante")}</option>
                     <option value="pendiente_datos">{t("socios.form.status.pendiente_datos")}</option>
@@ -1692,19 +2227,19 @@ export default function GestionSocios() {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{s.apellidos || "-"}</td>
-                <td className="px-4 py-3 text-muted-foreground">{s.dni || "-"}</td>
-                {showSecondaryColumns && (
+                {isColVisible("apellidos") && <td className="px-4 py-3 text-muted-foreground">{s.apellidos || "-"}</td>}
+                {isColVisible("dni") && <td className="px-4 py-3 text-muted-foreground">{s.dni || "-"}</td>}
+                {isColVisible("genero") && (
                   <td className="px-4 py-3 text-muted-foreground">
-                    {normalizeGeneroRawToken(s.genero) || "-"}
+                    {generoCodeLabel(normalizeGeneroRawToken(s.genero)) || "-"}
                   </td>
                 )}
-                {showSecondaryColumns && <td className="px-4 py-3 text-muted-foreground">{s.fechaNacimiento || "-"}</td>}
-                {showSecondaryColumns && <td className="px-4 py-3 text-muted-foreground">{s.fechaFallecimiento || "-"}</td>}
-                {showSecondaryColumns && <td className="px-4 py-3 text-muted-foreground">{s.poblacion || "-"}</td>}
-                {showSecondaryColumns && <td className="px-4 py-3 text-muted-foreground">{s.provincia || "-"}</td>}
-                {showSecondaryColumns && <td className="px-4 py-3 text-muted-foreground">{s.telefono || "-"}</td>}
-                {showSecondaryColumns && <td className="px-4 py-3 text-muted-foreground">{s.fechaAlta || "-"}</td>}
+                {isColVisible("fechaNacimiento") && <td className="px-4 py-3 text-muted-foreground">{s.fechaNacimiento || "-"}</td>}
+                {isColVisible("fechaFallecimiento") && <td className="px-4 py-3 text-muted-foreground">{s.fechaFallecimiento || "-"}</td>}
+                {isColVisible("poblacion") && <td className="px-4 py-3 text-muted-foreground">{s.poblacion || "-"}</td>}
+                {isColVisible("provincia") && <td className="px-4 py-3 text-muted-foreground">{s.provincia || "-"}</td>}
+                {isColVisible("telefono") && <td className="px-4 py-3 text-muted-foreground">{s.telefono || "-"}</td>}
+                {isColVisible("fechaAlta") && <td className="px-4 py-3 text-muted-foreground">{s.fechaAlta || "-"}</td>}
                 <td className="px-4 py-3">
                   {(() => {
                     const normalizedEstado = normalizeEstadoValue(s.estado);
@@ -1762,7 +2297,7 @@ export default function GestionSocios() {
       )}
       {!loading && (
         <p className="text-xs text-muted-foreground mt-1">
-          Género (crudo BD): H: {genderRawStats.h} · M: {genderRawStats.m} · F: {genderRawStats.f} · Otros/vacío: {genderRawStats.other}
+          {`${t("common.gender")}: ${generoCodeLabel("M")}: ${genderRawStats.m} · ${generoCodeLabel("F")}: ${genderRawStats.f} · ${generoCodeLabel("N")}: ${genderRawStats.n} · ?: ${genderRawStats.other}`}
         </p>
       )}
       {loadError && (

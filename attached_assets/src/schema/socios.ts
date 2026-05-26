@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, char, date, timestamp, decimal } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, char, date, timestamp, decimal, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,6 +26,7 @@ export const sociosTable = pgTable("db_socios", {
   membershipHasta: date("membership_hasta"),
   membershipCuota: decimal("membership_cuota", { precision: 10, scale: 2 }),
   grupoId: integer("grupo_id"),
+  grupoManual: boolean("grupo_manual").notNull().default(false),
   avatarUrl: text("avatar_url"),
   odooSyncedAt: timestamp("odoo_synced_at"),
   createdAt: timestamp("created_at").defaultNow(),

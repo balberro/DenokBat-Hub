@@ -4,7 +4,7 @@ import { db } from "@workspace/db";
 import { sociosTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
-type GenderNormalized = "H" | "F" | "N";
+type GenderNormalized = "M" | "F" | "N";
 
 type CorrectionRow = {
   numeroSocio: string;
@@ -13,7 +13,7 @@ type CorrectionRow = {
 
 function normalizeGenero(input: string): GenderNormalized | null {
   const raw = input.trim().toUpperCase();
-  if (raw === "H") return "H";
+  if (raw === "M" || raw === "H") return "M"; // "H" (legado) → M
   if (raw === "F") return "F";
   if (raw === "N") return "N";
   return null;
@@ -77,7 +77,7 @@ function parseCsv(content: string): { rows: CorrectionRow[]; errors: string[] } 
       continue;
     }
     if (!genero) {
-      errors.push(`Línea ${i + 1}: genero_normalizado inválido (${generoRaw}). Usa H/F/N.`);
+      errors.push(`Línea ${i + 1}: genero_normalizado inválido (${generoRaw}). Usa M/F/N.`);
       continue;
     }
     rows.push({ numeroSocio, genero });

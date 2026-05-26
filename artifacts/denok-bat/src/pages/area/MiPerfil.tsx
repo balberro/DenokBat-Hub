@@ -11,6 +11,16 @@ import MembershipCamposExtra from "./MembershipCamposExtra";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+/** Normaliza un código de género de BD al estándar M/F/N (acepta "H" antiguo como M). */
+function normalizeGeneroCode(v: unknown): "M" | "F" | "N" | "" {
+  const raw = String(v ?? "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw === "m" || raw === "h" || raw === "masculino" || raw === "male" || raw === "hombre" || raw === "g" || raw === "gizonezkoa") return "M";
+  if (raw === "f" || raw === "female" || raw === "femenino" || raw === "mujer" || raw === "e" || raw === "emakumezkoa") return "F";
+  if (raw === "n" || raw === "x" || raw === "nb" || raw === "other" || raw === "otro") return "N";
+  return "";
+}
+
 export default function MiPerfil() {
   const user = useStore((s) => s.user);
   const token = useStore((s) => s.token);
@@ -143,7 +153,7 @@ export default function MiPerfil() {
               provincia: String(pf.provincia ?? ""),
               dni: String(pf.dni ?? ""),
               fecha_nacimiento: String(pf.fecha_nacimiento ?? "").slice(0, 10),
-              genero: String(pf.genero ?? ""),
+              genero: normalizeGeneroCode(pf.genero),
             });
             const mp = String(pf.metodo_pago ?? "").trim();
             if (mp) setMetodoPagoSolicitud(mp);
@@ -243,7 +253,7 @@ export default function MiPerfil() {
           provincia: String(s?.provincia ?? ""),
           dni: String(s?.dni ?? ""),
           fecha_nacimiento: fechaStr,
-          genero: String(s?.genero ?? "").trim(),
+          genero: normalizeGeneroCode(s?.genero),
         });
         setSocioMeta({
           estado: String(s?.estado ?? ""),
@@ -485,7 +495,7 @@ export default function MiPerfil() {
           provincia: String(d?.provincia ?? prev.provincia),
           dni: String(d?.dni ?? prev.dni),
           fecha_nacimiento: fechaStr || prev.fecha_nacimiento,
-          genero: String(d?.genero ?? prev.genero),
+          genero: normalizeGeneroCode(d?.genero) || prev.genero,
         }));
         setSocioMeta({
           estado: String(d?.estado ?? ""),
@@ -760,9 +770,9 @@ export default function MiPerfil() {
                     }
                   >
                     <option value="">{t("perfil.membership_select_gender")}</option>
-                    <option value="H">{t("socios.form.gender.male")}</option>
+                    <option value="M">{t("socios.form.gender.male")}</option>
                     <option value="F">{t("socios.form.gender.female")}</option>
-                    <option value="N">N</option>
+                    <option value="N">{t("socios.form.gender.nonbinary")}</option>
                   </select>
                 </div>
               </div>
@@ -1053,9 +1063,9 @@ export default function MiPerfil() {
                 className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="">—</option>
-                <option value="H">H</option>
-                <option value="F">F</option>
-                <option value="N">N</option>
+                <option value="M">{t("socios.form.gender.male")}</option>
+                <option value="F">{t("socios.form.gender.female")}</option>
+                <option value="N">{t("socios.form.gender.nonbinary")}</option>
               </select>
             </div>
           </div>

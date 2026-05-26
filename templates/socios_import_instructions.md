@@ -17,7 +17,7 @@ Archivo de plantilla:
 - `nombre`: obligatorio.
 - `apellidos`: opcional.
 - `dni`: recomendado unico.
-- `genero`: opcional, valores sugeridos `M` o `F`.
+- `genero`: opcional. Valores admitidos: `M` (masculino), `F` (femenino), `N` (otros / no informado). El valor `H` legado se trata como `M`. En euskera se visualizan como `G` (Gizonezkoa) y `E` (Emakumezkoa).
 - `email`: opcional, formato email.
 - `telefono`: opcional.
 - `direccion`: opcional (linea de calle).
@@ -58,7 +58,7 @@ Para normalizar el género real cuando existen valores ambiguos:
 - Plantilla: `templates/socios_genero_correccion_template.csv`
 - Columnas:
   - `numero_socio`
-  - `genero_normalizado` (solo `H`, `F` o `N`)
+  - `genero_normalizado` (solo `M`, `F` o `N`; `H` legado se mapea a `M`)
 
 Ejecutar validación sin cambios:
 
