@@ -55,10 +55,21 @@ function emptyForm(): AsociacionDatosForm {
 export default function DatosAsociacion() {
   const { t } = useTranslation();
   const token = useStore((s) => s.token);
+  const setToken = useStore((s) => s.setToken);
+  const setUser = useStore((s) => s.setUser);
   const [form, setForm] = useState<AsociacionDatosForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const handleUnauthorized = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem("denok-bat-storage");
+    localStorage.removeItem("denok-bat-token");
+    alert("Tu sesión ha expirado. Vuelve a iniciar sesión.");
+    window.location.href = "/login";
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,6 +79,10 @@ export default function DatosAsociacion() {
       if (token) headers.Authorization = `Bearer ${token}`;
       const r = await fetch(`${API_BASE}/api/asociacion/admin`, { headers });
       if (!r.ok) {
+        if (r.status === 401) {
+          handleUnauthorized();
+          return;
+        }
         const d = await r.json().catch(() => ({}));
         throw new Error(d.error ?? `HTTP ${r.status}`);
       }
@@ -108,6 +123,10 @@ export default function DatosAsociacion() {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
+        if (r.status === 401) {
+          handleUnauthorized();
+          return;
+        }
         throw new Error(data.error ?? `HTTP ${r.status}`);
       }
       if (data.datos) setForm({ ...emptyForm(), ...data.datos });
