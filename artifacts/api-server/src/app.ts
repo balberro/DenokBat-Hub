@@ -3,6 +3,7 @@ import cors from "cors";
 import router from "./routes";
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { UPLOADS_ROOT } from "./lib/storage";
 
 const app: Express = express();
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
@@ -35,8 +36,7 @@ const corsOptions: cors.CorsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "60mb" }));
 app.use(express.urlencoded({ extended: true, limit: "60mb" }));
-app.use("/uploads", express.static(path.resolve(process.cwd(), "artifacts/api-server/uploads")));
-app.use("/uploads", express.static(path.resolve(process.cwd(), "artifacts/api-server/artifacts/api-server/uploads")));
+app.use("/uploads", express.static(UPLOADS_ROOT));
 
 app.use("/api", router);
 

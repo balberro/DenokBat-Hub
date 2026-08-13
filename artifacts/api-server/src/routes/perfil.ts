@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getUserRoles } from "../lib/roles";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 import { odooCall } from "../lib/odoo";
 import { loadAsociacionDatos, parseMetodosPagoSolicitudJson, sanitizeSolicitudDatosExtra } from "../lib/asociacionConfig";
 
@@ -74,7 +75,7 @@ async function persistAvatarIfNeeded(value: string | null): Promise<string | nul
   else if (mime === "image/gif") ext = "gif";
 
   const fileName = `avatar-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/perfil");
+  const uploadsDir = uploadsRootDir("perfil");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));
@@ -99,7 +100,7 @@ async function persistSolicitudSocioPhoto(value: unknown): Promise<string | null
   else if (mime === "image/gif") ext = "gif";
 
   const fileName = `solicitud-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/socios");
+  const uploadsDir = uploadsRootDir("socios");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));
@@ -138,7 +139,7 @@ async function persistSolicitudDniDoc(value: unknown, side: "anverso" | "reverso
   else return null;
 
   const fileName = `dni-${side}-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/socios/dni");
+  const uploadsDir = uploadsRootDir("socios", "dni");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, buf);

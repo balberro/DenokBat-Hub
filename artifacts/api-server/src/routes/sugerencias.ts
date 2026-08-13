@@ -413,7 +413,7 @@ router.get("/sugerencias", requireAuth, async (req, res): Promise<void> => {
 
   try {
     await ensureSugerenciasSchema();
-    let rows;
+    let rows: SugerenciaRow[] = [];
 
     const userRolesAdmin = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
     if (userRolesAdmin.includes("directivo")) {

@@ -1,6 +1,7 @@
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
+import { uploadsDir as uploadsRootDir } from "./storage";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -103,12 +104,7 @@ export async function persistActaPdf(args: {
   const [anyo, mes] = anyoMes.split("-");
   const slug = actaSlug(args.titulo);
   const baseName = `${anyoMes}-${slug}`;
-  const dir = path.resolve(
-    process.cwd(),
-    "artifacts/api-server/uploads/actas",
-    anyo,
-    mes,
-  );
+  const dir = uploadsRootDir("actas", anyo, mes);
   await mkdir(dir, { recursive: true });
 
   let suffix = 0;

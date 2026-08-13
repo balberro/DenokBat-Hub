@@ -208,7 +208,7 @@ export async function syncSocios(): Promise<SyncResult> {
           await db.update(sociosTable).set({ ...data, updatedAt: new Date() })
             .where(eq(sociosTable.odooId, odooId));
         } else {
-          await db.insert(sociosTable).values(data);
+          await db.insert(sociosTable).values(data as typeof sociosTable.$inferInsert);
         }
         procesados++;
       } catch (err) {
@@ -333,7 +333,8 @@ export async function syncActividades(): Promise<SyncResult> {
 
 export async function syncPagos(): Promise<SyncResult> {
   try {
-    const invoices = (await odooCall("membership_membership_line", "search_read", [
+    // Las facturas de cliente viven en account.move (move_type out_invoice/out_refund).
+    const invoices = (await odooCall("account.move", "search_read", [
       [["move_type", "in", ["out_invoice", "out_refund"]], ["state", "!=", "cancel"]],
     ], {
       fields: ["id", "name", "partner_id", "amount_total", "payment_state", "invoice_date", "invoice_date_due", "ref"],
@@ -350,13 +351,27 @@ export async function syncPagos(): Promise<SyncResult> {
 
     for (const inv of invoices) {
       try {
-        const odooId = Number(inv.id);
+        const moveId = Number(inv.id);
+        // partner_id viene como [id, name]; enlazamos con db_socios.odoo_id.
+        const partnerRaw = inv.partner_id;
+        const partnerId = Array.isArray(partnerRaw)
+          ? Number(partnerRaw[0] ?? 0)
+          : Number(partnerRaw ?? 0);
         const estado = inv.payment_state === "paid" ? "pagado"
           : inv.payment_state === "partial" ? "parcial"
           : "pendiente";
 
+        let socioId: number | null = null;
+        if (partnerId > 0) {
+          const [socio] = await db.select({ id: sociosTable.id }).from(sociosTable)
+            .where(eq(sociosTable.odooId, partnerId)).limit(1);
+          socioId = socio?.id ?? null;
+        }
+
         const data = {
-          odooId,
+          odooId: moveId,
+          moveId,
+          socioId,
           concepto: String(inv.name ?? ""),
           importe: String(Number(inv.amount_total ?? 0)),
           estado,
@@ -366,11 +381,11 @@ export async function syncPagos(): Promise<SyncResult> {
         };
 
         const existing = await db.select({ id: pagosTable.id }).from(pagosTable)
-          .where(eq(pagosTable.odooId, odooId)).limit(1);
+          .where(eq(pagosTable.moveId, moveId)).limit(1);
 
         if (existing.length > 0) {
           await db.update(pagosTable).set({ ...data, updatedAt: new Date() })
-            .where(eq(pagosTable.odooId, odooId));
+            .where(eq(pagosTable.id, existing[0].id));
         } else {
           await db.insert(pagosTable).values(data);
         }

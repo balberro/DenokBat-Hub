@@ -7,6 +7,7 @@ export const estatutosTable = pgTable("db_estatutos", {
   titulo: varchar("titulo", { length: 255 }).notNull(),
   tituloEu: varchar("titulo_eu", { length: 255 }),
   pdfUrl: text("pdf_url").notNull(),
+  pdfUrlEu: text("pdf_url_eu"),
   vigenciaDesde: date("vigencia_desde").notNull(),
   vigenciaHasta: date("vigencia_hasta"),
   createdAt: timestamp("created_at").defaultNow(),

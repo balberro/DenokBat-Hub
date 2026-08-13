@@ -2,11 +2,23 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Bus, Utensils, Users, ChevronLeft, ArrowRight, BookOpen, Clock, Search, Loader2, Euro } from "lucide-react";
-import { Link } from "wouter";
-import { useStore } from "@/store/use-store";
+import { useStore, userHasRole, type AppUser } from "@/store/use-store";
 
 type Tab = "fiestas" | "excursiones" | "viajes";
 type SubTab = "proxima" | "previstas" | "realizadas" | "proximo" | "previstos" | "realizados";
+
+// Nivel de acceso del módulo de eventos según el rol:
+//   visitante -> solo pestaña "próxima", sin inscripción
+//   usuario   -> "próxima" + "inscripción abierta", sin inscribirse
+//   socio     -> todas las pestañas, con opción de inscribirse
+type AccesoEventos = "visitante" | "usuario" | "socio";
+
+const ROLES_SOCIO = ["socio", "delegado", "directivo", "administrador", "contable"];
+
+function getAccesoEventos(user: AppUser | null): AccesoEventos {
+  if (!user) return "visitante";
+  return userHasRole(user, ROLES_SOCIO) ? "socio" : "usuario";
+}
 
 const EXCURSIONES = [
   {
@@ -125,17 +137,20 @@ function FiestaSectionNav({
   active,
   onChange,
   counts,
+  allowed,
 }: {
   active: FiestaSection;
   onChange: (s: FiestaSection) => void;
   counts: { proxima: number; previstas: number; realizadas: number };
+  allowed: FiestaSection[];
 }) {
   const { t } = useTranslation();
-  const items: { key: FiestaSection; labelKey: string }[] = [
+  const allItems: { key: FiestaSection; labelKey: string }[] = [
     { key: "proxima", labelKey: "eventos.next" },
     { key: "previstas", labelKey: "eventos.open_enrollment" },
     { key: "realizadas", labelKey: "eventos.last_realized" },
   ];
+  const items = allItems.filter(item => allowed.includes(item.key));
 
   return (
     <div className="flex gap-2 mb-6 border-b border-border">
@@ -157,7 +172,7 @@ function FiestaSectionNav({
   );
 }
 
-function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: any }) {
+function FiestaCardProxima({ f, lang, esSocio }: { f: Fiesta; lang: string; esSocio: boolean }) {
   const { t } = useTranslation();
   const nombre = lang === "eu" ? (f.nombreEu ?? f.nombre) : f.nombre;
   const descripcion = lang === "eu" ? (f.descripcionEu ?? f.descripcion) : f.descripcion;
@@ -298,20 +313,14 @@ function FiestaCardProxima({ f, lang, user }: { f: Fiesta; lang: string; user: a
           </div>
         )}
 
-        <div className="flex gap-3 flex-wrap">
-          {user ? (
+        {esSocio && (
+          <div className="flex gap-3 flex-wrap">
             <Button size="lg" className="gap-2">
               <Users className="w-4 h-4" />
               {t("eventos.enroll_short")}
             </Button>
-          ) : (
-            <Link href="/login">
-              <Button size="lg" variant="outline" className="gap-2">
-                {t("eventos.access_to_enroll")}
-              </Button>
-            </Link>
-          )}
         </div>
+        )}
       </div>
     </div>
   );
@@ -539,8 +548,14 @@ function FiestaRealizadas({ fiestas, lang }: { fiestas: Fiesta[]; lang: string }
   );
 }
 
-function FiestasTab({ lang, user }: { lang: string; user: any }) {
+function FiestasTab({ lang, user }: { lang: string; user: AppUser | null }) {
   const { t } = useTranslation();
+  const acceso = getAccesoEventos(user);
+  const esSocio = acceso === "socio";
+  const allowed: FiestaSection[] =
+    acceso === "visitante" ? ["proxima"] :
+    acceso === "usuario"   ? ["proxima", "previstas"] :
+    ["proxima", "previstas", "realizadas"];
   const [section, setSection] = useState<FiestaSection>("proxima");
   const [fiestas, setFiestas] = useState<Fiesta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -576,11 +591,11 @@ function FiestasTab({ lang, user }: { lang: string; user: any }) {
 
   return (
     <div>
-      <FiestaSectionNav active={section} onChange={setSection} counts={counts} />
+      <FiestaSectionNav active={section} onChange={setSection} counts={counts} allowed={allowed} />
 
       {section === "proxima" && (
         proxima ? (
-          <FiestaCardProxima f={proxima} lang={lang} user={user} />
+          <FiestaCardProxima f={proxima} lang={lang} esSocio={esSocio} />
         ) : (
           <div className="text-center py-16 text-muted-foreground bg-white rounded-2xl border border-border">
             {t("eventos.no_next_configured")}
@@ -594,8 +609,14 @@ function FiestasTab({ lang, user }: { lang: string; user: any }) {
   );
 }
 
-function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
+function ExcursionesTab({ lang, user }: { lang: string; user: AppUser | null }) {
   const { t } = useTranslation();
+  const acceso = getAccesoEventos(user);
+  const esSocio = acceso === "socio";
+  const allowedSubTabs: ("proxima" | "previstas" | "realizadas")[] =
+    acceso === "visitante" ? ["proxima"] :
+    acceso === "usuario"   ? ["proxima", "previstas"] :
+    ["proxima", "previstas", "realizadas"];
   const [subTab, setSubTab] = useState<"proxima" | "previstas" | "realizadas">("proxima");
   const [detail, setDetail] = useState<typeof EXCURSIONES[0] | null>(null);
 
@@ -634,10 +655,9 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
               <div className="bg-muted/30 rounded-2xl p-6"><BookOpen className="w-5 h-5 text-primary mb-2" /><h3 className="font-bold text-foreground mb-2">{t("eventos.memory_excursion")}</h3><p className="text-muted-foreground">{detail.memoria}</p></div>
             </div>
           )}
-          {detail.estado === "proxima" && (
+          {detail.estado === "proxima" && esSocio && (
             <div className="px-8 pb-8">
-              {user ? <Button className="gap-2"><Users className="w-4 h-4" />{t("eventos.enroll_short")}</Button>
-                : <Link href="/login"><Button>{t("eventos.access_to_enroll_short")}</Button></Link>}
+              <Button className="gap-2"><Users className="w-4 h-4" />{t("eventos.enroll_short")}</Button>
             </div>
           )}
         </div>
@@ -651,7 +671,7 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
   return (
     <div>
       <div className="flex gap-2 mb-6 border-b border-border">
-        {(["proxima", "previstas", "realizadas"] as const).map((tab) => (
+        {allowedSubTabs.map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${subTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
             {subTabLabel(tab)}
@@ -711,8 +731,14 @@ function ExcursionesTab({ lang, user }: { lang: string; user: any }) {
   );
 }
 
-function ViajesTab({ lang, user }: { lang: string; user: any }) {
+function ViajesTab({ lang, user }: { lang: string; user: AppUser | null }) {
   const { t } = useTranslation();
+  const acceso = getAccesoEventos(user);
+  const esSocio = acceso === "socio";
+  const allowedSubTabs: ("proximo" | "previstos" | "realizados")[] =
+    acceso === "visitante" ? ["proximo"] :
+    acceso === "usuario"   ? ["proximo", "previstos"] :
+    ["proximo", "previstos", "realizados"];
   const [subTab, setSubTab] = useState<"proximo" | "previstos" | "realizados">("proximo");
   const [detail, setDetail] = useState<typeof VIAJES[0] | null>(null);
 
@@ -752,10 +778,9 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
           {detail.memoria && (
             <div className="px-8 pb-8"><div className="bg-muted/30 rounded-2xl p-6"><BookOpen className="w-5 h-5 text-primary mb-2" /><h3 className="font-bold mb-2">{t("eventos.memory_trip")}</h3><p className="text-muted-foreground">{detail.memoria}</p></div></div>
           )}
-          {(detail.estado === "proximo") && (
+          {(detail.estado === "proximo") && esSocio && (
             <div className="px-8 pb-8">
-              {user ? <Button><Users className="w-4 h-4 mr-2" />{t("eventos.enroll_short")}</Button>
-                : <Link href="/login"><Button>{t("eventos.access_to_enroll_short")}</Button></Link>}
+              <Button><Users className="w-4 h-4 mr-2" />{t("eventos.enroll_short")}</Button>
             </div>
           )}
         </div>
@@ -769,7 +794,7 @@ function ViajesTab({ lang, user }: { lang: string; user: any }) {
   return (
     <div>
       <div className="flex gap-2 mb-6 border-b border-border">
-        {(["proximo", "previstos", "realizados"] as const).map((tab) => (
+        {allowedSubTabs.map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${subTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
             {subTabLabel(tab)}

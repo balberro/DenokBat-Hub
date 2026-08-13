@@ -1,20 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { pagosTable, sociosTable } from "@workspace/db/schema";
+import { pagosTable } from "@workspace/db/schema";
 import { requireAuth } from "../middlewares/auth";
+import { resolveSocioIdForUser } from "../lib/resolver";
+import { enqueuePagoToOdoo } from "../lib/enqueue";
 import { eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
-
-async function resolveSocioIdForUser(user: Express.Request["user"]): Promise<number | null> {
-  if (!user) return null;
-  const byOdooId = await db.select({ id: sociosTable.id })
-    .from(sociosTable)
-    .where(eq(sociosTable.odooId, user.uid))
-    .limit(1);
-  if (byOdooId.length > 0) return byOdooId[0].id;
-  return null;
-}
 
 router.get("/pagos", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
@@ -24,7 +16,7 @@ router.get("/pagos", requireAuth, async (req, res): Promise<void> => {
     const resolvedSocioId = await resolveSocioIdForUser(req.user);
     const isAdmin = ["administrador", "contable"].includes(user.role);
     const wantsAdminView = String(adminView ?? "").toLowerCase() === "1" || String(adminView ?? "").toLowerCase() === "true";
-    let rows;
+    let rows: Array<typeof pagosTable.$inferSelect> = [];
     // Seguridad por defecto: devolver pagos propios aunque el rol sea admin/contable.
     // Solo mostrar "todos" cuando se pida explícitamente adminView=1.
     if (isAdmin && wantsAdminView && !socioId) {
@@ -98,6 +90,9 @@ router.put("/pagos/:id/pagar", requireAuth, async (req, res): Promise<void> => {
         updatedAt: new Date(),
       })
       .where(eq(pagosTable.id, id));
+
+    // Registro del cobro en Odoo (account.payment) vía cola asíncrona.
+    await enqueuePagoToOdoo(id);
 
     const updated = await db.select().from(pagosTable).where(eq(pagosTable.id, id)).limit(1);
     res.json(updated[0] ?? { ok: true });

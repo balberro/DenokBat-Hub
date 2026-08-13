@@ -1,4 +1,5 @@
 import app from "./app";
+import { startOutboxWorker } from "./lib/outboxWorker";
 
 // En hosting con Passenger el puerto puede ser 0 (socket efimero).
 // Mantiene compatibilidad con despliegues donde PORT viene definido.
@@ -13,3 +14,6 @@ if (Number.isNaN(port) || port < 0) {
 app.listen(port, () => {
   console.log(`Server listening on port ${port === 0 ? "ephemeral (0)" : port}`);
 });
+
+// Worker de cola transaccional → Odoo (facturación/cobros asíncronos).
+startOutboxWorker();

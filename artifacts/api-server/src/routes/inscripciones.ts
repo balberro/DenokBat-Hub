@@ -7,59 +7,13 @@ import {
   pagosTable,
   fiestasTable,
   sociosTable,
-  usersTable,
 } from "@workspace/db/schema";
 import { requireAuth } from "../middlewares/auth";
-import { eq, desc, inArray, or, ilike } from "drizzle-orm";
+import { resolveSocioIdForUser } from "../lib/resolver";
+import { enqueuePagoToOdoo } from "../lib/enqueue";
+import { eq, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
-
-async function resolveSocioIdForUser(user: Express.Request["user"]): Promise<number | null> {
-  if (!user) return null;
-  const dbUser = await db.select({
-    id: usersTable.id,
-    socioId: usersTable.socioId,
-    email: usersTable.email,
-  })
-    .from(usersTable)
-    .where(
-      or(
-        eq(usersTable.odooUid, user.uid),
-        eq(usersTable.username, String(user.username ?? "")),
-      ),
-    )
-    .orderBy(desc(usersTable.updatedAt))
-    .limit(1);
-
-  const dbUserId = Number(dbUser[0]?.id ?? 0) || null;
-  const linkedSocioByUser = Number(dbUser[0]?.socioId ?? 0) || null;
-  if (linkedSocioByUser) return linkedSocioByUser;
-
-  if (dbUserId) {
-    const byUsuarioId = await db.select({ id: sociosTable.id })
-      .from(sociosTable)
-      .where(eq(sociosTable.usuarioId, dbUserId))
-      .limit(1);
-    if (byUsuarioId.length > 0) return byUsuarioId[0].id;
-  }
-
-  const byOdooId = await db.select({ id: sociosTable.id })
-    .from(sociosTable)
-    .where(eq(sociosTable.odooId, user.uid))
-    .limit(1);
-  if (byOdooId.length > 0) return byOdooId[0].id;
-
-  const candidateEmail = String(user.email ?? dbUser[0]?.email ?? "").trim();
-  if (candidateEmail) {
-    const byEmail = await db.select({ id: sociosTable.id })
-      .from(sociosTable)
-      .where(ilike(sociosTable.email, candidateEmail))
-      .limit(1);
-    if (byEmail.length > 0) return byEmail[0].id;
-  }
-
-  return null;
-}
 
 // ── GET /inscripciones ────────────────────────────────────────────────────────
 // Devuelve las inscripciones del usuario autenticado (o todas si es admin/contable).
@@ -71,7 +25,7 @@ router.get("/inscripciones", requireAuth, async (req, res): Promise<void> => {
 
   try {
     const resolvedSocioId = await resolveSocioIdForUser(req.user);
-    let rows;
+    let rows: Array<typeof inscripcionesTable.$inferSelect> = [];
     if (isAdmin && wantsAdminView && req.query.socioId) {
       rows = await db.select().from(inscripcionesTable)
         .where(eq(inscripcionesTable.socioId, parseInt(String(req.query.socioId), 10)))
@@ -103,7 +57,7 @@ router.get("/inscripciones", requireAuth, async (req, res): Promise<void> => {
             .from(fiestasTable).where(inArray(fiestasTable.id, fiestaIds))
         : Promise.resolve([]),
       eventoIds.length > 0
-        ? db.select({ id: eventosTable.id, nombre: eventosTable.nombre, nombreEu: eventosTable.nombreEu, fecha: eventosTable.fecha })
+        ? db.select({ id: eventosTable.id, nombre: eventosTable.nombre, nombreEu: eventosTable.nombreEu, fecha: eventosTable.fechaInicio })
             .from(eventosTable).where(inArray(eventosTable.id, eventoIds))
         : Promise.resolve([]),
     ]);
@@ -222,6 +176,8 @@ router.post("/inscripciones", requireAuth, async (req, res): Promise<void> => {
         estado: "pendiente",
       }).returning();
       pago = p;
+      // Factura en Odoo (account.move) vía cola asíncrona.
+      await enqueuePagoToOdoo(p.id);
     }
 
     res.status(201).json({ ...inserted, pagos: pago ? [pago] : [] });

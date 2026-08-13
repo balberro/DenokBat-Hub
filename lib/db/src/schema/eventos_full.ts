@@ -1,9 +1,92 @@
 import {
   pgTable, serial, integer, varchar, text, timestamp,
-  decimal, boolean, date,
+  decimal, boolean, date, jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+// ─── Eventos unificados (módulo visitante) ──────────────────────────────────
+// Modelo completo de eventos: acto principal + subactividades + multimedia.
+// Tablas reales en BD: db_eventos_full / db_eventos_subacts / db_eventos_media
+
+export const eventosFullTable = pgTable("db_eventos_full", {
+  id:                    serial("id").primaryKey(),
+  odooId:                integer("odoo_id").unique(),
+  tipo:                  varchar("tipo", { length: 30 }).notNull().default("excursion"),
+  estado:                varchar("estado", { length: 30 }).notNull().default("prevista"),
+  nombre:                varchar("nombre", { length: 255 }).notNull(),
+  nombreEu:              varchar("nombre_eu", { length: 255 }),
+  descripcion:           text("descripcion"),
+  descripcionEu:         text("descripcion_eu"),
+  fechaInicio:           date("fecha_inicio"),
+  fechaFin:              date("fecha_fin"),
+  fechaFinInscripcion:   date("fecha_fin_inscripcion"),
+  precioInscripcion:     decimal("precio_inscripcion", { precision: 10, scale: 2 }),
+  precioSuplemento:      decimal("precio_suplemento", { precision: 10, scale: 2 }),
+  subactsInscripcion:    text("subacts_inscripcion"),
+  subactsSuplemento:     text("subacts_suplemento"),
+  lugar:                 varchar("lugar", { length: 500 }),
+  menu:                  text("menu"),
+  bus1:                  varchar("bus1", { length: 255 }),
+  bus2:                  varchar("bus2", { length: 255 }),
+  horaRegreso:           varchar("hora_regreso", { length: 10 }),
+  plazasTotal:           integer("plazas_total").default(0),
+  plazasDisponibles:     integer("plazas_disponibles").default(0),
+  fotoUrl:               text("foto_url"),
+  memoriaParticipantes:  text("memoria_participantes"),
+  resumen:               text("resumen"),
+  extra:                 jsonb("extra"),
+  publicado:             boolean("publicado").default(false),
+  createdBy:             integer("created_by"),
+  odooSyncedAt:          timestamp("odoo_synced_at"),
+  createdAt:             timestamp("created_at").defaultNow(),
+  updatedAt:             timestamp("updated_at").defaultNow(),
+});
+
+export const insertEventoFullSchema = createInsertSchema(eventosFullTable)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEventoFull = z.infer<typeof insertEventoFullSchema>;
+export type EventoFull = typeof eventosFullTable.$inferSelect;
+
+// Subactividades de un evento (paradas, días, actos parciales)
+export const eventosSubactsTable = pgTable("db_eventos_subacts", {
+  id:           serial("id").primaryKey(),
+  eventoId:     integer("evento_id").notNull(),
+  orden:        integer("orden").notNull().default(1),
+  nombre:       varchar("nombre", { length: 255 }),
+  nombreEu:     varchar("nombre_eu", { length: 255 }),
+  fotoUrl:      text("foto_url"),
+  memoria:      text("memoria"),
+  createdAt:    timestamp("created_at").defaultNow(),
+  updatedAt:    timestamp("updated_at").defaultNow(),
+});
+
+export const insertEventoSubactSchema = createInsertSchema(eventosSubactsTable)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEventoSubact = z.infer<typeof insertEventoSubactSchema>;
+export type EventoSubact = typeof eventosSubactsTable.$inferSelect;
+
+// Multimedia de eventos (fotos/vídeos del evento o de una subactividad)
+export const eventosMediaTable = pgTable("db_eventos_media", {
+  id:            serial("id").primaryKey(),
+  eventoId:      integer("evento_id").notNull(),
+  subactId:      integer("subact_id"),
+  tipoMedia:     varchar("tipo_media", { length: 20 }).default("foto"),
+  url:           text("url").notNull(),
+  nombreArchivo: varchar("nombre_archivo", { length: 500 }),
+  mimeType:      varchar("mime_type", { length: 100 }),
+  tamanoBytes:   integer("tamano_bytes"),
+  orden:         integer("orden").default(0),
+  descripcion:   text("descripcion"),
+  descripcionEu: text("descripcion_eu"),
+  subidoPor:     integer("subido_por"),
+  createdAt:     timestamp("created_at").defaultNow(),
+});
+
+export const insertEventoMediaSchema = createInsertSchema(eventosMediaTable)
+  .omit({ id: true, createdAt: true });
+export type InsertEventoMedia = z.infer<typeof insertEventoMediaSchema>;
+export type EventoMedia = typeof eventosMediaTable.$inferSelect;
 
 // ─── Fiestas ─────────────────────────────────────────────────────────────────
 

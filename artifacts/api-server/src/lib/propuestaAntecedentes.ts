@@ -2,6 +2,7 @@ import { mkdir, writeFile, access, unlink } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uploadsDir as uploadsRootDir, UPLOADS_ROOT } from "./storage";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -57,11 +58,7 @@ export async function persistAntecedentesPdf(args: {
   }
   const slug = slugFilename(args.originalName ?? "antecedentes");
   const filename = `${slug}-${randomUUID().slice(0, 8)}.pdf`;
-  const dir = path.resolve(
-    process.cwd(),
-    "artifacts/api-server/uploads/propuestas",
-    String(args.propuestaId),
-  );
+  const dir = uploadsRootDir("propuestas", String(args.propuestaId));
   await mkdir(dir, { recursive: true });
   const absPath = path.join(dir, filename);
   await writeFile(absPath, buf);
@@ -81,15 +78,8 @@ export async function deleteAntecedentesFile(publicUrl: string): Promise<boolean
   if (!publicUrl) return false;
   const normalized = publicUrl.replace(/^\/+/, "");
   if (!normalized.startsWith("uploads/propuestas/")) return false;
-  const absPath = path.resolve(
-    process.cwd(),
-    "artifacts/api-server",
-    normalized,
-  );
-  const baseDir = path.resolve(
-    process.cwd(),
-    "artifacts/api-server/uploads/propuestas",
-  );
+  const absPath = path.resolve(UPLOADS_ROOT, normalized);
+  const baseDir = uploadsRootDir("propuestas");
   if (!absPath.startsWith(baseDir + path.sep) && absPath !== baseDir) {
     return false;
   }

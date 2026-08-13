@@ -120,44 +120,89 @@ export default function Home() {
       </section>
 
       <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+        <div className="flex flex-wrap lg:grid lg:grid-cols-[280px_1fr] lg:items-center gap-6">
           <div className="space-y-2">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground">
               {t("home.upcoming_events_activities")}
             </h2>
             {upcoming.length > 3 && (
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={!canPrev} onClick={() => setCarouselStart((p) => Math.max(0, p - 1))}>
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <Button type="button" variant="outline" size="sm" disabled={!canNext} onClick={() => setCarouselStart((p) => Math.min(Math.max(0, upcoming.length - 3), p + 1))}>
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                {carouselStart + 1} – {Math.min(carouselStart + 3, upcoming.length)} / {upcoming.length}
+              </p>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {visibleCards.map((item) => (
-            <Link key={item.id} href={item.href}>
-              <div className="bg-white rounded-2xl border border-border p-5 h-full hover:shadow-md transition-all cursor-pointer">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {item.tipo === "evento"
-                      ? (item.fecha ? format(item.fecha, "dd/MM/yyyy") : "Próximo")
-                      : (t("nav.activities"))}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {item.tipo === "evento" ? t("nav.events") : t("nav.activities")}
-                  </span>
-                </div>
-                <h3 className="text-lg font-bold text-foreground line-clamp-2 mb-2">{item.titulo}</h3>
-                <p className="text-sm text-muted-foreground line-clamp-3">{item.descripcion || "-"}</p>
+          {upcoming.length > 3 ? (
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0 rounded-full bg-white"
+                disabled={!canPrev}
+                onClick={() => setCarouselStart((p) => Math.max(0, p - 1))}
+                aria-label={t("common.previous")}
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </Button>
+
+              <div className="grid flex-1 grid-cols-1 md:grid-cols-3 gap-6">
+                {visibleCards.map((item) => (
+                  <Link key={item.id} href={item.href}>
+                    <div className="bg-white rounded-2xl border border-border p-5 h-full hover:shadow-md transition-all cursor-pointer">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {item.tipo === "evento"
+                            ? (item.fecha ? format(item.fecha, "dd/MM/yyyy") : "Próximo")
+                            : (t("nav.activities"))}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {item.tipo === "evento" ? t("nav.events") : t("nav.activities")}
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-bold text-foreground line-clamp-2 mb-2">{item.titulo}</h3>
+                      <p className="text-sm text-muted-foreground line-clamp-3">{item.descripcion || "-"}</p>
+                    </div>
+                  </Link>
+                ))}
               </div>
-            </Link>
-          ))}
-          </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0 rounded-full bg-white"
+                disabled={!canNext}
+                onClick={() => setCarouselStart((p) => Math.min(Math.max(0, upcoming.length - 3), p + 1))}
+                aria-label={t("common.next")}
+              >
+                <ChevronRight className="h-6 w-6" />
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {visibleCards.map((item) => (
+                <Link key={item.id} href={item.href}>
+                  <div className="bg-white rounded-2xl border border-border p-5 h-full hover:shadow-md transition-all cursor-pointer">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {item.tipo === "evento"
+                          ? (item.fecha ? format(item.fecha, "dd/MM/yyyy") : "Próximo")
+                          : (t("nav.activities"))}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {item.tipo === "evento" ? t("nav.events") : t("nav.activities")}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground line-clamp-2 mb-2">{item.titulo}</h3>
+                    <p className="text-sm text-muted-foreground line-clamp-3">{item.descripcion || "-"}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -65,7 +66,7 @@ async function persistActividadImageIfNeeded(value: unknown): Promise<string | n
       : mime === "image/webp" ? "webp"
         : "jpg";
   const fileName = `actividad-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/actividades");
+  const uploadsDir = uploadsRootDir("actividades");
   await mkdir(uploadsDir, { recursive: true });
   await writeFile(path.join(uploadsDir, fileName), Buffer.from(base64, "base64"));
   return `/uploads/actividades/${fileName}`;

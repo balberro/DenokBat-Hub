@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 import { randomUUID } from "node:crypto";
 
 const router: IRouter = Router();
@@ -42,7 +43,7 @@ async function persistImageIfNeeded(value: unknown, folder: string): Promise<str
   const base64 = match[2];
   const ext = inferExtensionFromMime(mime);
   const fileName = `foto-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/galeria", folder);
+  const uploadsDir = uploadsRootDir("galeria", folder);
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));
@@ -117,7 +118,7 @@ router.post("/galeria", requireAuth, requireRole("directivo", "administrador"), 
       ? body.mediaUrls
       : (body.mediaUrl ? [body.mediaUrl] : []);
     const persistedUrls = (
-      await Promise.all(incoming.map((entry) => persistImageIfNeeded(entry, folder)))
+      await Promise.all(incoming.map((entry: unknown) => persistImageIfNeeded(entry, folder)))
     ).filter((u): u is string => Boolean(u));
     if (persistedUrls.length === 0) {
       res.status(400).json({ error: "mediaUrl o mediaUrls es obligatorio" });
@@ -186,7 +187,7 @@ router.put("/galeria/:id", requireAuth, requireRole("directivo", "administrador"
     const folder = `${slugify(tema)}-${fecha}-${slugify(titulo) || "album"}`;
     const incomingAlbum = Array.isArray(body.mediaUrls) ? body.mediaUrls : [];
     const persistedAlbumUrls = (
-      await Promise.all(incomingAlbum.map((entry) => persistImageIfNeeded(entry, folder)))
+      await Promise.all(incomingAlbum.map((entry: unknown) => persistImageIfNeeded(entry, folder)))
     ).filter((u): u is string => Boolean(u));
     const nextMediaUrl = body.mediaUrl !== undefined
       ? await persistImageIfNeeded(body.mediaUrl, folder)

@@ -27,6 +27,20 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
+/**
+ * Autenticación opcional: decodifica el token si viene en la cabecera,
+ * pero no rechaza peticiones anónimas. Útil para endpoints públicos que
+ * adaptan la respuesta al rol (p. ej. módulo de eventos del visitante).
+ */
+export function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) {
+    const payload = verifyToken(header.slice(7));
+    if (payload) req.user = payload;
+  }
+  next();
+}
+
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {

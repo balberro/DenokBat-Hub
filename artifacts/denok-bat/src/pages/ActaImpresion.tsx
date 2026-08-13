@@ -95,16 +95,16 @@ export default function ActaImpresion() {
         ),
       );
       if (esStaff && expedienteIds.length > 0) {
-        const all = await Promise.all(
+        const all: Array<[number, AccionExp[]]> = await Promise.all(
           expedienteIds.map(async (eid) => {
             try {
               const ra = await fetch(`${API_BASE}/api/admin/expedientes/${eid}/acciones`, {
                 headers: { Authorization: `Bearer ${token}` },
               });
               const da = await ra.json();
-              return [eid, (da.items as AccionExp[]) ?? []] as const;
+              return [eid, (da.items as AccionExp[]) ?? []];
             } catch {
-              return [eid, []] as const;
+              return [eid, []];
             }
           }),
         );

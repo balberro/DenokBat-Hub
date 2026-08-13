@@ -3,6 +3,7 @@ import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
 import { Download, Plus, Search, Calendar, FileText, Newspaper, BookOpen, ImageIcon, ChevronDown, Pencil } from "lucide-react";
 import { useStore, getUserRoles } from "@/store/use-store";
+import AdminGaleria from "@/pages/area/AdminGaleria";
 
 type Tab = "hoja" | "pulunpe" | "noticias" | "articulos" | "galeria";
 type NoticiaImagen = {
@@ -1673,7 +1674,13 @@ function ArticulosTab({ lang, canCreate }: { lang: string; canCreate: boolean })
   );
 }
 
-function GaleriaTab({ lang, canCreate }: { lang: string; canCreate: boolean }) {
+export function GaleriaTab({ lang, canCreate }: { lang: string; canCreate: boolean }) {
+  return <AdminGaleria lang={lang} canCreate={canCreate} />;
+}
+
+// Implementación anterior de GaleriaTab, conservada mientras se refactoriza
+// Divulgacion. El editor de galería único vive en "@/pages/area/AdminGaleria".
+function legacyGaleriaTabImpl({ lang, canCreate }: { lang: string; canCreate: boolean }) {
   const token = useStore((s) => s.token);
   const [search, setSearch] = useState("");
   const [tema, setTema] = useState<"todo" | "Evento" | "Actividad">("todo");
@@ -2118,3 +2125,4 @@ export default function Divulgacion() {
     </div>
   );
 }
+

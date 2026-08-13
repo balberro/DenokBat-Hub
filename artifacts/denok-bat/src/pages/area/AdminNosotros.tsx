@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/store/use-store";
+import { useTranslation } from "@/i18n/translations";
+import AdminGaleria from "./AdminGaleria";
 
 const API_ROOT = "/api";
+
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 type Cargo = {
   id: number;
@@ -42,6 +46,7 @@ type Estatuto = {
   titulo: string;
   tituloEu: string | null;
   pdfUrl: string;
+  pdfUrlEu: string | null;
   vigenciaDesde: string;
   vigenciaHasta: string | null;
 };
@@ -49,6 +54,7 @@ type EstatutoDraft = {
   titulo: string;
   tituloEu: string;
   pdfUrl: string;
+  pdfUrlEu: string;
   vigenciaDesde: string;
   vigenciaHasta: string;
 };
@@ -69,9 +75,14 @@ type ActaAsambleaDraft = {
 type AdminData = {
   textos: {
     quienesSomosTitle: string;
+    quienesSomosTitleEu: string;
+    quienesSomosSubtitle: string;
+    quienesSomosSubtitleEu: string;
     presentacionTitle: string;
     historiaEs: string;
     historiaEu: string;
+    estatutosIntroEs: string;
+    estatutosIntroEu: string;
   };
   hitos: Array<{ year: string; texto: string; textoEu: string; icon: string; imageUrl?: string }>;
   cargos: Cargo[];
@@ -88,16 +99,33 @@ const DEFAULT_HITOS = [
   { year: "", texto: "", textoEu: "", icon: "", imageUrl: "" },
 ];
 
+type EditorTab = "presentacion" | "estatutos" | "organigrama" | "galeria" | "actas";
+
+const EDITOR_TABS: { key: EditorTab; label: string }[] = [
+  { key: "presentacion", label: "nosotros.tab.presentacion" },
+  { key: "estatutos", label: "nosotros.tab.estatutos" },
+  { key: "organigrama", label: "nosotros.tab.organigrama" },
+  { key: "galeria", label: "nosotros.tab.galeria" },
+  { key: "actas", label: "nosotros.tab.actas" },
+];
+
 export default function AdminNosotros() {
+  const { lang, t } = useTranslation();
   const token = useStore((s) => s.token);
+  const [tab, setTab] = useState<EditorTab>("presentacion");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [form, setForm] = useState({
     quienesSomosTitle: "",
+    quienesSomosTitleEu: "",
+    quienesSomosSubtitle: "",
+    quienesSomosSubtitleEu: "",
     presentacionTitle: "",
     historiaEs: "",
     historiaEu: "",
+    estatutosIntroEs: "",
+    estatutosIntroEu: "",
   });
   const [hitos, setHitos] = useState(DEFAULT_HITOS);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -126,15 +154,19 @@ export default function AdminNosotros() {
     titulo: "",
     tituloEu: "",
     pdfUrl: "",
+    pdfUrlEu: "",
     vigenciaDesde: "",
     vigenciaHasta: "",
   });
+  const [nuevoEstatutoPdfName, setNuevoEstatutoPdfName] = useState("");
+  const [nuevoEstatutoPdfEuName, setNuevoEstatutoPdfEuName] = useState("");
   const [newActa, setNewActa] = useState<ActaAsambleaDraft>({
     titulo: "",
     tituloEu: "",
     pdfUrl: "",
     fechaActa: "",
   });
+  const [nuevaActaPdfName, setNuevaActaPdfName] = useState("");
 
   const authHeaders = useMemo(
     () => ({
@@ -144,19 +176,57 @@ export default function AdminNosotros() {
     [token],
   );
 
+  const showSuccess = (text: string) => setNotice({ type: "success", text });
+  const showError = (text: string) => setNotice({ type: "error", text });
+
+
+
+
+
+
+
+
+  // Extrae el mensaje de error del body JSON YA leído (no releer el Response,
+  // su body solo puede consumirse una vez).
+  const errorFromBody = (body: unknown, r: Response) => {
+    const d = body as { error?: string; detalle?: string } | null;
+    if (d && typeof d === "object") {
+      if (d.detalle) return `${d.error ?? "Error"}: ${d.detalle}`;
+      if (d.error) return d.error;
+    }
+    return `HTTP ${r.status} ${r.statusText}`.trim();
+  };
+
+  // Lee el PDF como dataURL comprobando antes el tamaño máximo.
+  const handlePdfSelect = async (file: File | null, onLoaded: (dataUrl: string) => void): Promise<boolean> => {
+    if (!file) return false;
+    if (file.size > MAX_PDF_BYTES) {
+      showError(`El PDF pesa ${(file.size / (1024 * 1024)).toFixed(1)} MB. Máximo permitido: 25 MB.`);
+      return false;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    onLoaded(dataUrl);
+    return true;
+  };
+
   const load = async () => {
     if (!token) return;
     setLoading(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros`, { headers: authHeaders });
       if (!r.ok) throw new Error("load failed");
       const data = (await r.json()) as AdminData;
       setForm({
         quienesSomosTitle: String(data?.textos?.quienesSomosTitle ?? ""),
+        quienesSomosTitleEu: String(data?.textos?.quienesSomosTitleEu ?? ""),
+        quienesSomosSubtitle: String(data?.textos?.quienesSomosSubtitle ?? ""),
+        quienesSomosSubtitleEu: String(data?.textos?.quienesSomosSubtitleEu ?? ""),
         presentacionTitle: String(data?.textos?.presentacionTitle ?? ""),
         historiaEs: String(data?.textos?.historiaEs ?? ""),
         historiaEu: String(data?.textos?.historiaEu ?? ""),
+        estatutosIntroEs: String(data?.textos?.estatutosIntroEs ?? ""),
+        estatutosIntroEu: String(data?.textos?.estatutosIntroEu ?? ""),
       });
       const incomingHitos = Array.isArray(data?.hitos) ? data.hitos : [];
       setHitos([...incomingHitos, ...DEFAULT_HITOS].slice(0, 8).map((h) => ({
@@ -190,6 +260,7 @@ export default function AdminNosotros() {
           titulo: String(e.titulo ?? ""),
           tituloEu: String(e.tituloEu ?? ""),
           pdfUrl: String(e.pdfUrl ?? ""),
+          pdfUrlEu: String(e.pdfUrlEu ?? ""),
           vigenciaDesde: String(e.vigenciaDesde ?? ""),
           vigenciaHasta: String(e.vigenciaHasta ?? ""),
         };
@@ -207,8 +278,10 @@ export default function AdminNosotros() {
         };
       }
       setActaDrafts(actasDraftMap);
+      return data;
     } catch {
-      setNotice("Error cargando datos de Nosotros.");
+      setNotice({ type: "error", text: "Error cargando datos de Nosotros." });
+      return null;
     } finally {
       setLoading(false);
     }
@@ -221,7 +294,7 @@ export default function AdminNosotros() {
   const saveConfig = async () => {
     if (!token) return;
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const validHitos = hitos
         .map((h) => ({
@@ -242,9 +315,9 @@ export default function AdminNosotros() {
         }),
       });
       if (!r.ok) throw new Error("save config failed");
-      setNotice("Configuración de Nosotros guardada.");
+      showSuccess("Configuración de Nosotros guardada.");
     } catch {
-      setNotice("Error guardando configuración de Nosotros.");
+      showError("Error guardando configuración de Nosotros.");
     } finally {
       setSaving(false);
     }
@@ -253,11 +326,11 @@ export default function AdminNosotros() {
   const addHistorico = async () => {
     if (!token) return;
     if (!newRow.socioId || !newRow.cargoId || !newRow.fechaInicio) {
-      setNotice("Para asignar cargo histórico: socio, cargo y fecha de inicio son obligatorios.");
+      showError("Para asignar cargo histórico: socio, cargo y fecha de inicio son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/historico`, {
         method: "POST",
@@ -274,9 +347,9 @@ export default function AdminNosotros() {
       if (!r.ok) throw new Error("create historico failed");
       setNewRow({ socioId: "", cargoId: "", fechaInicio: "", fechaFin: "", descripcion: "", descripcionEu: "" });
       await load();
-      setNotice("Cargo histórico asignado.");
+      showSuccess("Cargo histórico asignado.");
     } catch {
-      setNotice("Error creando histórico de cargo.");
+      showError("Error creando histórico de cargo.");
     } finally {
       setSaving(false);
     }
@@ -285,7 +358,7 @@ export default function AdminNosotros() {
   const deleteHistorico = async (id: number) => {
     if (!token) return;
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/historico/${id}`, {
         method: "DELETE",
@@ -293,8 +366,9 @@ export default function AdminNosotros() {
       });
       if (!r.ok) throw new Error("delete historico failed");
       await load();
+      showSuccess("Asignación histórica eliminada.");
     } catch {
-      setNotice("Error eliminando asignación histórica.");
+      showError("Error eliminando asignación histórica.");
     } finally {
       setSaving(false);
     }
@@ -304,11 +378,11 @@ export default function AdminNosotros() {
     if (!token) return;
     const draft = historicoDrafts[id];
     if (!draft || !draft.socioId || !draft.cargoId || !draft.fechaInicio) {
-      setNotice("Para editar histórico: socio, cargo y fecha inicio son obligatorios.");
+      showError("Para editar histórico: socio, cargo y fecha inicio son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/historico/${id}`, {
         method: "PUT",
@@ -324,9 +398,9 @@ export default function AdminNosotros() {
       });
       if (!r.ok) throw new Error("update historico failed");
       await load();
-      setNotice("Histórico actualizado.");
+      showSuccess("Histórico actualizado.");
     } catch {
-      setNotice("Error actualizando histórico.");
+      showError("Error actualizando histórico.");
     } finally {
       setSaving(false);
     }
@@ -335,11 +409,11 @@ export default function AdminNosotros() {
   const addCargo = async () => {
     if (!token) return;
     if (!newCargo.codigo || !newCargo.nombre) {
-      setNotice("Para crear cargo: código y nombre son obligatorios.");
+      showError("Para crear cargo: código y nombre son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/cargos`, {
         method: "POST",
@@ -349,9 +423,9 @@ export default function AdminNosotros() {
       if (!r.ok) throw new Error("add cargo failed");
       setNewCargo({ codigo: "", nombre: "", nombreEu: "", ambito: "directivo" });
       await load();
-      setNotice("Cargo añadido.");
+      showSuccess("Cargo añadido.");
     } catch {
-      setNotice("Error creando cargo.");
+      showError("Error creando cargo.");
     } finally {
       setSaving(false);
     }
@@ -360,7 +434,7 @@ export default function AdminNosotros() {
   const deleteCargo = async (id: number) => {
     if (!token) return;
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/cargos/${id}`, {
         method: "DELETE",
@@ -368,9 +442,9 @@ export default function AdminNosotros() {
       });
       if (!r.ok) throw new Error("delete cargo failed");
       await load();
-      setNotice("Cargo eliminado.");
+      showSuccess("Cargo eliminado.");
     } catch {
-      setNotice("No se pudo eliminar el cargo (puede estar en uso en histórico).");
+      showError("No se pudo eliminar el cargo (puede estar en uso en histórico).");
     } finally {
       setSaving(false);
     }
@@ -387,11 +461,11 @@ export default function AdminNosotros() {
   const addEstatuto = async () => {
     if (!token) return;
     if (!newEstatuto.titulo || !newEstatuto.vigenciaDesde || !newEstatuto.pdfUrl) {
-      setNotice("Para crear estatuto: título, PDF y vigencia desde son obligatorios.");
+      showError("Para crear estatuto: título, PDF y vigencia desde son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/estatutos`, {
         method: "POST",
@@ -400,16 +474,25 @@ export default function AdminNosotros() {
           titulo: newEstatuto.titulo,
           tituloEu: newEstatuto.tituloEu,
           pdfUrl: newEstatuto.pdfUrl,
+          pdfUrlEu: newEstatuto.pdfUrlEu,
           vigenciaDesde: newEstatuto.vigenciaDesde,
           vigenciaHasta: newEstatuto.vigenciaHasta || null,
         }),
       });
-      if (!r.ok) throw new Error("add estatuto failed");
-      setNewEstatuto({ titulo: "", tituloEu: "", pdfUrl: "", vigenciaDesde: "", vigenciaHasta: "" });
-      await load();
-      setNotice("Estatuto añadido.");
+      const created = (await r.json().catch(() => null)) as Estatuto | null;
+      if (!r.ok) {
+        showError(`Error creando estatuto. ${errorFromBody(created, r)}`);
+        return;
+      }
+      setNewEstatuto({ titulo: "", tituloEu: "", pdfUrl: "", pdfUrlEu: "", vigenciaDesde: "", vigenciaHasta: "" });
+      setNuevoEstatutoPdfName("");
+      setNuevoEstatutoPdfEuName("");
+      const reloaded = await load();
+      const savedId = Number(created?.id);
+      const confirmed = savedId && Array.isArray(reloaded?.estatutos) && reloaded.estatutos.some((e) => e.id === savedId);
+      showSuccess(confirmed ? "Estatuto guardado correctamente." : "El estatuto se ha guardado, pero no se ha podido confirmar en el listado.");
     } catch {
-      setNotice("Error creando estatuto.");
+      showError("Error creando estatuto.");
     } finally {
       setSaving(false);
     }
@@ -419,11 +502,11 @@ export default function AdminNosotros() {
     if (!token) return;
     const draft = estatutoDrafts[id];
     if (!draft || !draft.titulo || !draft.vigenciaDesde || !draft.pdfUrl) {
-      setNotice("Para guardar estatuto: título, PDF y vigencia desde son obligatorios.");
+      showError("Para guardar estatuto: título, PDF y vigencia desde son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/estatutos/${id}`, {
         method: "PUT",
@@ -432,15 +515,20 @@ export default function AdminNosotros() {
           titulo: draft.titulo,
           tituloEu: draft.tituloEu,
           pdfUrl: draft.pdfUrl,
+          pdfUrlEu: draft.pdfUrlEu,
           vigenciaDesde: draft.vigenciaDesde,
           vigenciaHasta: draft.vigenciaHasta || null,
         }),
       });
-      if (!r.ok) throw new Error("update estatuto failed");
+      const updated = (await r.json().catch(() => null)) as Estatuto | null;
+      if (!r.ok) {
+        showError(`Error actualizando estatuto. ${errorFromBody(updated, r)}`);
+        return;
+      }
       await load();
-      setNotice("Estatuto actualizado.");
+      showSuccess(updated?.id === id ? "Estatuto actualizado correctamente." : "El estatuto se ha actualizado, pero no se ha podido confirmar en el listado.");
     } catch {
-      setNotice("Error actualizando estatuto.");
+      showError("Error actualizando estatuto.");
     } finally {
       setSaving(false);
     }
@@ -449,7 +537,7 @@ export default function AdminNosotros() {
   const deleteEstatuto = async (id: number) => {
     if (!token) return;
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/estatutos/${id}`, {
         method: "DELETE",
@@ -457,9 +545,9 @@ export default function AdminNosotros() {
       });
       if (!r.ok) throw new Error("delete estatuto failed");
       await load();
-      setNotice("Estatuto eliminado.");
+      showSuccess("Estatuto eliminado.");
     } catch {
-      setNotice("Error eliminando estatuto.");
+      showError("Error eliminando estatuto.");
     } finally {
       setSaving(false);
     }
@@ -468,23 +556,28 @@ export default function AdminNosotros() {
   const addActa = async () => {
     if (!token) return;
     if (!newActa.titulo || !newActa.fechaActa || !newActa.pdfUrl) {
-      setNotice("Para crear acta: título, fecha y PDF son obligatorios.");
+      showError("Para crear acta: título, fecha y PDF son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/actas`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(newActa),
       });
-      if (!r.ok) throw new Error("add acta failed");
+      const created = (await r.json().catch(() => null)) as ActaAsamblea | null;
+      if (!r.ok) {
+        showError(`Error creando acta. ${errorFromBody(created, r)}`);
+        return;
+      }
       setNewActa({ titulo: "", tituloEu: "", pdfUrl: "", fechaActa: "" });
+      setNuevaActaPdfName("");
       await load();
-      setNotice("Acta añadida.");
+      showSuccess(created?.id ? "Acta guardada correctamente." : "El acta se ha guardado, pero no se ha podido confirmar en el listado.");
     } catch {
-      setNotice("Error creando acta.");
+      showError("Error creando acta.");
     } finally {
       setSaving(false);
     }
@@ -494,22 +587,26 @@ export default function AdminNosotros() {
     if (!token) return;
     const draft = actaDrafts[id];
     if (!draft || !draft.titulo || !draft.fechaActa || !draft.pdfUrl) {
-      setNotice("Para guardar acta: título, fecha y PDF son obligatorios.");
+      showError("Para guardar acta: título, fecha y PDF son obligatorios.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/actas/${id}`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify(draft),
       });
-      if (!r.ok) throw new Error("update acta failed");
+      const updated = (await r.json().catch(() => null)) as ActaAsamblea | null;
+      if (!r.ok) {
+        showError(`Error actualizando acta. ${errorFromBody(updated, r)}`);
+        return;
+      }
       await load();
-      setNotice("Acta actualizada.");
+      showSuccess(updated?.id === id ? "Acta actualizada correctamente." : "El acta se ha actualizado, pero no se ha podido confirmar en el listado.");
     } catch {
-      setNotice("Error actualizando acta.");
+      showError("Error actualizando acta.");
     } finally {
       setSaving(false);
     }
@@ -518,7 +615,7 @@ export default function AdminNosotros() {
   const deleteActa = async (id: number) => {
     if (!token) return;
     setSaving(true);
-    setNotice("");
+    setNotice(null);
     try {
       const r = await fetch(`${API_ROOT}/admin/nosotros/actas/${id}`, {
         method: "DELETE",
@@ -526,27 +623,88 @@ export default function AdminNosotros() {
       });
       if (!r.ok) throw new Error("delete acta failed");
       await load();
-      setNotice("Acta eliminada.");
+      showSuccess("Acta eliminada.");
     } catch {
-      setNotice("Error eliminando acta.");
+      showError("Error eliminando acta.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-12 space-y-8">
-      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
+    <div className="max-w-5xl mx-auto px-4 py-12 space-y-6">
+      <div>
         <h1 className="text-3xl font-bold text-foreground">Editor Nosotros</h1>
-        <p className="text-sm text-muted-foreground">
-          Edita presentación y hitos de la página de Nosotros. Para Fundadores, Dirección y Delegados usa el bloque de asignaciones.
+        <p className="text-sm text-muted-foreground mt-1">
+          Cada pestaña corresponde a una sección de la página pública «Nosotros»: Presentación, Estatutos, Organigrama, Galería y Actas.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
+        {EDITOR_TABS.map((tabBtn) => (
+          <button
+            key={tabBtn.key}
+            type="button"
+            onClick={() => setTab(tabBtn.key)}
+            className={`px-4 py-2 rounded-t-xl text-sm font-semibold transition-colors ${
+              tab === tabBtn.key
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+            }`}
+          >
+            {t(tabBtn.label)}
+          </button>
+        ))}
+      </div>
+
+      {notice && (
+        <p
+          className={`flex items-center gap-2 text-sm font-semibold px-4 py-3 rounded-xl border ${
+            notice.type === "success"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-red-50 text-red-700 border-red-200"
+          }`}
+        >
+          <span>{notice.type === "success" ? "✓" : "✗"}</span>
+          {notice.text}
+        </p>
+      )}
+
+      {tab === "presentacion" && (
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
 
         <div>
-          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título principal</label>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título principal (ES)</label>
           <input
             value={form.quienesSomosTitle}
             onChange={(e) => setForm((p) => ({ ...p, quienesSomosTitle: e.target.value }))}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            disabled={loading || saving}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Título principal (EU)</label>
+          <input
+            value={form.quienesSomosTitleEu}
+            onChange={(e) => setForm((p) => ({ ...p, quienesSomosTitleEu: e.target.value }))}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            disabled={loading || saving}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Subtítulo (ES)</label>
+          <input
+            value={form.quienesSomosSubtitle}
+            onChange={(e) => setForm((p) => ({ ...p, quienesSomosSubtitle: e.target.value }))}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            disabled={loading || saving}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Subtítulo (EU)</label>
+          <input
+            value={form.quienesSomosSubtitleEu}
+            onChange={(e) => setForm((p) => ({ ...p, quienesSomosSubtitleEu: e.target.value }))}
             className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             disabled={loading || saving}
           />
@@ -576,6 +734,26 @@ export default function AdminNosotros() {
             value={form.historiaEu}
             onChange={(e) => setForm((p) => ({ ...p, historiaEu: e.target.value }))}
             rows={5}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y"
+            disabled={loading || saving}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto introductorio de Estatutos (ES)</label>
+          <textarea
+            value={form.estatutosIntroEs}
+            onChange={(e) => setForm((p) => ({ ...p, estatutosIntroEs: e.target.value }))}
+            rows={4}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y"
+            disabled={loading || saving}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1.5 text-muted-foreground">Texto introductorio de Estatutos (EU)</label>
+          <textarea
+            value={form.estatutosIntroEu}
+            onChange={(e) => setForm((p) => ({ ...p, estatutosIntroEu: e.target.value }))}
+            rows={4}
             className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y"
             disabled={loading || saving}
           />
@@ -626,7 +804,10 @@ export default function AdminNosotros() {
 
         <Button onClick={saveConfig} disabled={loading || saving}>{saving ? "Guardando..." : "Guardar presentación e hitos"}</Button>
       </div>
+      )}
 
+      {tab === "organigrama" && (
+      <>
       <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
         <h2 className="text-xl font-bold text-foreground">Organigrama (Fundadores / Dirección / Delegados)</h2>
         <p className="text-sm text-muted-foreground">
@@ -759,7 +940,10 @@ export default function AdminNosotros() {
           {cargos.length === 0 && <p className="text-sm text-muted-foreground">No hay cargos.</p>}
         </div>
       </div>
+      </>
+      )}
 
+      {tab === "estatutos" && (
       <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
         <h2 className="text-xl font-bold text-foreground">Editor de Estatutos (PDF + vigencia)</h2>
         <p className="text-sm text-muted-foreground">Añade los estatutos actuales y anteriores con fechas de vigencia.</p>
@@ -769,7 +953,7 @@ export default function AdminNosotros() {
           <input value={newEstatuto.tituloEu} onChange={(e) => setNewEstatuto((p) => ({ ...p, tituloEu: e.target.value }))} placeholder="Título EU" className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
           <input type="date" value={newEstatuto.vigenciaDesde} onChange={(e) => setNewEstatuto((p) => ({ ...p, vigenciaDesde: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
           <input type="date" value={newEstatuto.vigenciaHasta} onChange={(e) => setNewEstatuto((p) => ({ ...p, vigenciaHasta: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
-          <Button onClick={addEstatuto} disabled={loading || saving}>Añadir estatuto</Button>
+          <Button onClick={addEstatuto} disabled={loading || saving}>{saving ? "Guardando..." : "Añadir estatuto"}</Button>
         </div>
         <div className="grid sm:grid-cols-[1fr_auto] gap-2">
           <input value={newEstatuto.pdfUrl} onChange={(e) => setNewEstatuto((p) => ({ ...p, pdfUrl: e.target.value }))} placeholder="URL PDF o DataURL" className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
@@ -779,12 +963,39 @@ export default function AdminNosotros() {
             onChange={async (e) => {
               const file = e.target.files?.[0] ?? null;
               if (!file) return;
-              const pdf = await readFileAsDataUrl(file);
-              setNewEstatuto((p) => ({ ...p, pdfUrl: pdf }));
+              const ok = await handlePdfSelect(file, (pdf) => {
+                setNewEstatuto((p) => ({ ...p, pdfUrl: pdf }));
+                setNuevoEstatutoPdfName(file.name);
+              });
+              if (!ok) e.target.value = "";
             }}
             className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
             disabled={loading || saving}
           />
+          {nuevoEstatutoPdfName && (
+            <p className="text-xs font-medium text-emerald-700">PDF adjuntado: {nuevoEstatutoPdfName}</p>
+          )}
+        </div>
+        <div className="grid sm:grid-cols-[1fr_auto] gap-2">
+          <input value={newEstatuto.pdfUrlEu} onChange={(e) => setNewEstatuto((p) => ({ ...p, pdfUrlEu: e.target.value }))} placeholder="URL PDF EU (opcional)" className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={async (e) => {
+              const file = e.target.files?.[0] ?? null;
+              if (!file) return;
+              const ok = await handlePdfSelect(file, (pdf) => {
+                setNewEstatuto((p) => ({ ...p, pdfUrlEu: pdf }));
+                setNuevoEstatutoPdfEuName(file.name);
+              });
+              if (!ok) e.target.value = "";
+            }}
+            className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+            disabled={loading || saving}
+          />
+          {nuevoEstatutoPdfEuName && (
+            <p className="text-xs font-medium text-emerald-700">PDF EU adjuntado: {nuevoEstatutoPdfEuName}</p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -793,6 +1004,7 @@ export default function AdminNosotros() {
               titulo: e.titulo,
               tituloEu: e.tituloEu ?? "",
               pdfUrl: e.pdfUrl,
+              pdfUrlEu: e.pdfUrlEu ?? "",
               vigenciaDesde: e.vigenciaDesde,
               vigenciaHasta: e.vigenciaHasta ?? "",
             };
@@ -804,7 +1016,7 @@ export default function AdminNosotros() {
                   <input type="date" value={draft.vigenciaDesde} onChange={(ev) => setEstatutoDrafts((p) => ({ ...p, [e.id]: { ...draft, vigenciaDesde: ev.target.value } }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
                   <input type="date" value={draft.vigenciaHasta} onChange={(ev) => setEstatutoDrafts((p) => ({ ...p, [e.id]: { ...draft, vigenciaHasta: ev.target.value } }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
                   <div className="flex gap-2">
-                    <Button onClick={() => updateEstatuto(e.id)} disabled={loading || saving}>Guardar</Button>
+                    <Button onClick={() => updateEstatuto(e.id)} disabled={loading || saving}>{saving ? "Guardando..." : "Guardar"}</Button>
                     <Button variant="outline" onClick={() => deleteEstatuto(e.id)} disabled={loading || saving}>Eliminar</Button>
                   </div>
                 </div>
@@ -816,8 +1028,27 @@ export default function AdminNosotros() {
                     onChange={async (ev) => {
                       const file = ev.target.files?.[0] ?? null;
                       if (!file) return;
-                      const pdf = await readFileAsDataUrl(file);
-                      setEstatutoDrafts((p) => ({ ...p, [e.id]: { ...draft, pdfUrl: pdf } }));
+                      const ok = await handlePdfSelect(file, (pdf) => {
+                        setEstatutoDrafts((p) => ({ ...p, [e.id]: { ...draft, pdfUrl: pdf } }));
+                      });
+                      if (!ok) ev.target.value = "";
+                    }}
+                    className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                    disabled={loading || saving}
+                  />
+                </div>
+                <div className="grid sm:grid-cols-[1fr_auto] gap-2">
+                  <input value={draft.pdfUrlEu} onChange={(ev) => setEstatutoDrafts((p) => ({ ...p, [e.id]: { ...draft, pdfUrlEu: ev.target.value } }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={async (ev) => {
+                      const file = ev.target.files?.[0] ?? null;
+                      if (!file) return;
+                      const ok = await handlePdfSelect(file, (pdf) => {
+                        setEstatutoDrafts((p) => ({ ...p, [e.id]: { ...draft, pdfUrlEu: pdf } }));
+                      });
+                      if (!ok) ev.target.value = "";
                     }}
                     className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
                     disabled={loading || saving}
@@ -829,7 +1060,19 @@ export default function AdminNosotros() {
           {estatutos.length === 0 && <p className="text-sm text-muted-foreground">No hay estatutos cargados.</p>}
         </div>
       </div>
+      )}
 
+      {tab === "galeria" && (
+      <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
+        <h2 className="text-xl font-bold text-foreground">Galería</h2>
+        <p className="text-sm text-muted-foreground">
+          Gestiona los álbumes de fotos que se muestran en la pestaña «Galería» de la página de Nosotros y en Divulgación (editor compartido).
+        </p>
+        <AdminGaleria lang={lang} canCreate={true} />
+      </div>
+      )}
+
+      {tab === "actas" && (
       <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
         <h2 className="text-xl font-bold text-foreground">Editor de Actas de Asamblea</h2>
         <p className="text-sm text-muted-foreground">Guarda actas en PDF con fecha del acta. Se mostrarán en índice por fecha descendente.</p>
@@ -839,7 +1082,7 @@ export default function AdminNosotros() {
           <input value={newActa.tituloEu} onChange={(e) => setNewActa((p) => ({ ...p, tituloEu: e.target.value }))} placeholder="Título EU" className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
           <input type="date" value={newActa.fechaActa} onChange={(e) => setNewActa((p) => ({ ...p, fechaActa: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
           <input value={newActa.pdfUrl} onChange={(e) => setNewActa((p) => ({ ...p, pdfUrl: e.target.value }))} placeholder="URL PDF o DataURL" className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
-          <Button onClick={addActa} disabled={loading || saving}>Añadir acta</Button>
+          <Button onClick={addActa} disabled={loading || saving}>{saving ? "Guardando..." : "Añadir acta"}</Button>
         </div>
         <input
           type="file"
@@ -847,12 +1090,18 @@ export default function AdminNosotros() {
           onChange={async (e) => {
             const file = e.target.files?.[0] ?? null;
             if (!file) return;
-            const pdf = await readFileAsDataUrl(file);
-            setNewActa((p) => ({ ...p, pdfUrl: pdf }));
+            const ok = await handlePdfSelect(file, (pdf) => {
+              setNewActa((p) => ({ ...p, pdfUrl: pdf }));
+              setNuevaActaPdfName(file.name);
+            });
+            if (!ok) e.target.value = "";
           }}
           className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
           disabled={loading || saving}
         />
+        {nuevaActaPdfName && (
+          <p className="text-xs font-medium text-emerald-700">PDF adjuntado: {nuevaActaPdfName}</p>
+        )}
 
         <div className="space-y-2">
           {actas.map((a) => {
@@ -870,7 +1119,7 @@ export default function AdminNosotros() {
                   <input type="date" value={draft.fechaActa} onChange={(ev) => setActaDrafts((p) => ({ ...p, [a.id]: { ...draft, fechaActa: ev.target.value } }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
                   <input value={draft.pdfUrl} onChange={(ev) => setActaDrafts((p) => ({ ...p, [a.id]: { ...draft, pdfUrl: ev.target.value } }))} className="px-3 py-2 rounded-lg border border-border bg-background text-foreground" disabled={loading || saving} />
                   <div className="flex gap-2">
-                    <Button onClick={() => updateActa(a.id)} disabled={loading || saving}>Guardar</Button>
+                    <Button onClick={() => updateActa(a.id)} disabled={loading || saving}>{saving ? "Guardando..." : "Guardar"}</Button>
                     <Button variant="outline" onClick={() => deleteActa(a.id)} disabled={loading || saving}>Eliminar</Button>
                   </div>
                 </div>
@@ -880,8 +1129,10 @@ export default function AdminNosotros() {
                   onChange={async (ev) => {
                     const file = ev.target.files?.[0] ?? null;
                     if (!file) return;
-                    const pdf = await readFileAsDataUrl(file);
-                    setActaDrafts((p) => ({ ...p, [a.id]: { ...draft, pdfUrl: pdf } }));
+                    const ok = await handlePdfSelect(file, (pdf) => {
+                      setActaDrafts((p) => ({ ...p, [a.id]: { ...draft, pdfUrl: pdf } }));
+                    });
+                    if (!ok) ev.target.value = "";
                   }}
                   className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
                   disabled={loading || saving}
@@ -892,8 +1143,7 @@ export default function AdminNosotros() {
           {actas.length === 0 && <p className="text-sm text-muted-foreground">No hay actas cargadas.</p>}
         </div>
       </div>
-
-      {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+      )}
     </div>
   );
 }

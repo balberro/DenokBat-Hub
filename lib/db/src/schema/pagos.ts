@@ -16,6 +16,14 @@ export const pagosTable = pgTable("db_pagos", {
   justificanteUrl: text("justificante_url"),
   justificanteSubidoEn: timestamp("justificante_subido_en"),
   notas: text("notas"),
+  /** Identidad Odoo por modelo (no reutilizar odoo_id): account.move */
+  moveId: integer("move_id").unique(),
+  /** Identidad Odoo: account.payment */
+  paymentId: integer("payment_id").unique(),
+  idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),
+  odooSyncStatus: varchar("odoo_sync_status", { length: 30 }).default("pending"),
+  odooSyncError: text("odoo_sync_error"),
+  odooSyncAttempts: integer("odoo_sync_attempts").default(0),
   odooSyncedAt: timestamp("odoo_synced_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

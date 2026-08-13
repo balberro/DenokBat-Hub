@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uploadsDir as uploadsRootDir } from "./storage";
 
 const MAX_BYTES = 12 * 1024 * 1024;
 
@@ -34,7 +35,7 @@ export async function persistJustificantePago(value: unknown): Promise<string | 
   else return null;
 
   const fileName = `pago-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/pagos");
+  const uploadsDir = uploadsRootDir("pagos");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, buf);

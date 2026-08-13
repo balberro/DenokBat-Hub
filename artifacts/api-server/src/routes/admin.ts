@@ -86,7 +86,7 @@ router.get("/admin/db/tables", requireAuth, requireRole("administrador"), async 
 // ── GET /admin/db/table/:name ─────────────────────────────────────────────────
 // Describe las columnas de una tabla
 router.get("/admin/db/table/:name", requireAuth, requireRole("administrador"), async (req, res): Promise<void> => {
-  const name = req.params.name.replace(/[^a-z0-9_]/gi, "");
+  const name = String(req.params.name ?? "").replace(/[^a-z0-9_]/gi, "");
   try {
     const result = await pool.query(`
       SELECT

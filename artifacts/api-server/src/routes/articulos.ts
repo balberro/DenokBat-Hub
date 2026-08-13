@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -33,7 +34,7 @@ async function persistPdfIfNeeded(value: unknown): Promise<string | null> {
   const base64 = match[2];
   const ext = inferExtensionFromMime(mime);
   const fileName = `pdf-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/articulos");
+  const uploadsDir = uploadsRootDir("articulos");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));
@@ -50,7 +51,7 @@ async function persistImageIfNeeded(value: unknown): Promise<string | null> {
   const base64 = match[2];
   const ext = inferExtensionFromMime(mime);
   const fileName = `foto-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/articulos");
+  const uploadsDir = uploadsRootDir("articulos");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));

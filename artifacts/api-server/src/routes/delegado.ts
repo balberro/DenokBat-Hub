@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { persistJustificantePago } from "../lib/justificantePago";
+import { enqueuePagoToOdoo } from "../lib/enqueue";
 
 const router: IRouter = Router();
 
@@ -524,6 +525,11 @@ router.patch(
         }
       }
 
+      // Registro en Odoo: si el pago quedó 'pagado', encolar la facturación/cobro.
+      if (pagoFinal && String(pagoFinal.estado).toLowerCase() === "pagado") {
+        await enqueuePagoToOdoo(pagoFinal.id);
+      }
+
       res.json({
         ok: true,
         inscripcionId: id,
@@ -615,6 +621,15 @@ router.post(
       );
 
       const total = r.rows.reduce((acc, row) => acc + Number(row.importe ?? 0), 0);
+
+      // Registro en Odoo: encolar el cobro de cada pago liquidado.
+      for (const row of r.rows) {
+        const pagoId = Number(row.id);
+        if (Number.isFinite(pagoId) && pagoId > 0) {
+          await enqueuePagoToOdoo(pagoId);
+        }
+      }
+
       res.json({
         ok: true,
         actualizados: r.rowCount ?? 0,

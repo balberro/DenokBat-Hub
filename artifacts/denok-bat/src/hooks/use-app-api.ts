@@ -42,7 +42,8 @@ export function useAppNoticias() {
 }
 
 export function useAppServicios() {
-  const query = useGetServicios({},{ query: { retry: false }});
+  // Nota: la firma generada de useGetServicios solo admite un argumento (options)
+  const query = useGetServicios({ query: { retry: false } });
   return {
     data: query.isError ? { items: mockServicios } : query.data,
     isLoading: query.isLoading && !query.isError,

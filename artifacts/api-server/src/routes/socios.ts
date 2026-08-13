@@ -6,9 +6,11 @@ import { requireAuth } from "../middlewares/auth";
 import { eq, ilike, or, desc } from "drizzle-orm";
 import { odooCall } from "../lib/odoo";
 import { syncSocios } from "../lib/sync";
+import { enqueuePagoToOdoo } from "../lib/enqueue";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -138,7 +140,7 @@ async function persistSocioAvatarIfNeeded(value: unknown): Promise<string | null
   const base64 = match[2];
   const ext = inferImageExtensionFromMime(mime);
   const fileName = `avatar-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/socios");
+  const uploadsDir = uploadsRootDir("socios");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));
@@ -166,7 +168,11 @@ async function createMembershipInvoiceInOdoo(input: {
   referencia?: string;
 }): Promise<number | null> {
   try {
-    const moveId = await odooCall("membership_membership_line", "create", [{
+    // Las facturas de cliente se crean en account.move (move_type='out_invoice').
+    // El modelo membership.membership_line es la LÍNEA de membresía que Odoo
+    // genera automáticamente al facturar un producto con servicio de membresía;
+    // no se usa directamente para crear facturas.
+    const moveId = await odooCall("account.move", "create", [{
       move_type: "out_invoice",
       partner_id: input.partnerOdooId,
       invoice_date: input.fechaFactura || false,
@@ -178,7 +184,17 @@ async function createMembershipInvoiceInOdoo(input: {
         price_unit: input.importe,
       }]],
     }]);
-    return Number(moveId ?? 0) || null;
+    const numericMoveId = Number(moveId ?? 0) || null;
+    if (numericMoveId) {
+      // Confirmar la factura (draft → posted) para que quede en estado válido.
+      try {
+        await odooCall("account.move", "action_post", [[numericMoveId]]);
+      } catch {
+        // Si el módulo exige validar antes (p.ej. falta config de cuenta),
+        // devolvemos igualmente el move_id: syncPagos la reconciliará luego.
+      }
+    }
+    return numericMoveId;
   } catch {
     return null;
   }
@@ -202,7 +218,7 @@ async function saveMembershipInvoiceLocal(socioId: number, payload: MembershipIn
       estado,
       referencia,
       fechaPago,
-      ...(odooMoveId ? { odooId: odooMoveId } : {}),
+      ...(odooMoveId ? { odooId: odooMoveId, moveId: odooMoveId } : {}),
       updatedAt: new Date(),
     }).where(eq(pagosTable.id, Number(payload.pagoId)));
     const [updated] = await db.select().from(pagosTable).where(eq(pagosTable.id, Number(payload.pagoId))).limit(1);
@@ -218,9 +234,49 @@ async function saveMembershipInvoiceLocal(socioId: number, payload: MembershipIn
     referencia,
     fechaPago,
     odooId: odooMoveId,
+    moveId: odooMoveId,
     odooSyncedAt: odooMoveId ? new Date() : null,
   }).returning();
   return inserted ?? null;
+}
+
+/** Guarda el pago local y encola su facturación en Odoo (con fallback síncrono).
+ *  Devuelve el pago actualizado con su moveId si se llegó a crear la factura. */
+async function createMembershipInvoiceFlow(
+  socioId: number,
+  inv: MembershipInvoicePayload,
+  partnerOdooId: number | null,
+): Promise<{ id: number; moveId?: number | null; odooId?: number | null } | null> {
+  // 1) Persistir localmente primero (sin depender de Odoo).
+  const pago = await saveMembershipInvoiceLocal(socioId, inv, null);
+  if (!pago?.id) return pago;
+
+  const shouldCreateInOdoo = Boolean(inv.crearEnOdoo);
+  if (!shouldCreateInOdoo || !partnerOdooId) return pago;
+
+  // 2) Encender la cola asíncrona (create_invoice vía worker).
+  const encolado = await enqueuePagoToOdoo(pago.id);
+  if (encolado) return pago;
+
+  // 3) Fallback: si la tabla outbox no está migrada aún, factura síncrona.
+  const odooMoveId = await createMembershipInvoiceInOdoo({
+    partnerOdooId,
+    concepto: String(inv.concepto ?? "Cuota membresía"),
+    importe: Number(inv.importe ?? 0),
+    fechaFactura: inv.fechaFactura,
+    fechaVencimiento: inv.fechaVencimiento,
+    referencia: inv.referencia,
+  });
+  if (odooMoveId) {
+    await db.update(pagosTable).set({
+      odooId: odooMoveId,
+      moveId: odooMoveId,
+      odooSyncedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(pagosTable.id, pago.id));
+    return { ...pago, odooId: odooMoveId, moveId: odooMoveId };
+  }
+  return pago;
 }
 
 router.get("/socios", requireAuth, async (req, res): Promise<void> => {
@@ -629,19 +685,11 @@ router.post("/socios", requireAuth, async (req, res): Promise<void> => {
 
     let membershipPago = null;
     if (membershipInvoice && normalizedTipologia !== "honorifica") {
-      const inv = membershipInvoice as MembershipInvoicePayload;
-      const shouldCreateInOdoo = Boolean(inv.crearEnOdoo);
-      const odooMoveId = shouldCreateInOdoo && partnerOdooId
-        ? await createMembershipInvoiceInOdoo({
-            partnerOdooId,
-            concepto: String(inv.concepto ?? "Cuota membresía"),
-            importe: Number(inv.importe ?? 0),
-            fechaFactura: inv.fechaFactura,
-            fechaVencimiento: inv.fechaVencimiento,
-            referencia: inv.referencia,
-          })
-        : null;
-      membershipPago = await saveMembershipInvoiceLocal(inserted.id, inv, odooMoveId);
+      membershipPago = await createMembershipInvoiceFlow(
+        inserted.id,
+        membershipInvoice as MembershipInvoicePayload,
+        partnerOdooId,
+      );
     }
 
     res.status(201).json({ ...inserted, membershipPago });
@@ -831,19 +879,11 @@ router.put("/socios/:id", requireAuth, async (req, res): Promise<void> => {
 
     let membershipPago = null;
     if (membershipInvoice && normalizedTipologia !== "honorifica") {
-      const inv = membershipInvoice as MembershipInvoicePayload;
-      const shouldCreateInOdoo = Boolean(inv.crearEnOdoo);
-      const odooMoveId = shouldCreateInOdoo && current.odooId
-        ? await createMembershipInvoiceInOdoo({
-            partnerOdooId: current.odooId,
-            concepto: String(inv.concepto ?? "Cuota membresía"),
-            importe: Number(inv.importe ?? 0),
-            fechaFactura: inv.fechaFactura,
-            fechaVencimiento: inv.fechaVencimiento,
-            referencia: inv.referencia,
-          })
-        : null;
-      membershipPago = await saveMembershipInvoiceLocal(id, inv, odooMoveId);
+      membershipPago = await createMembershipInvoiceFlow(
+        id,
+        membershipInvoice as MembershipInvoicePayload,
+        current.odooId,
+      );
     }
 
     const updated = await db.select({

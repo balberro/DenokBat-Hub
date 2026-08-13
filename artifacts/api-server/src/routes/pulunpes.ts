@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -65,7 +66,7 @@ async function persistDataUrlIfNeeded(value: unknown, kind: "foto" | "pdf"): Pro
   const base64 = match[2];
   const ext = inferExtensionFromMime(mime);
   const fileName = `${kind}-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/pulunpes");
+  const uploadsDir = uploadsRootDir("pulunpes");
   await mkdir(uploadsDir, { recursive: true });
   const absPath = path.join(uploadsDir, fileName);
   await writeFile(absPath, Buffer.from(base64, "base64"));

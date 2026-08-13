@@ -32,10 +32,30 @@ export BASE_PATH="${DEPLOY_BASE_PATH:-/}"
 export API_PROXY_TARGET="${DEPLOY_API_PROXY_TARGET:-http://127.0.0.1:3001}"
 "${PNPM[@]}" run build:test
 
-# Asegura rutas de subida necesarias en runtime (avatares, etc.)
-echo "==> ensure uploads directories"
-mkdir -p "$ROOT/artifacts/api-server/uploads/perfil"
-chmod -R 775 "$ROOT/artifacts/api-server/uploads" 2>/dev/null || true
+# Asegura rutas de subida necesarias en runtime (avatares, PDFs, imágenes, etc.).
+# El código servidor resuelve la raíz de uploads de forma centralizada en
+# artifacts/api-server/src/lib/storage.ts (UPLOADS_ROOT, sobreescribible con
+# la variable UPLOADS_DIR); aquí creamos la estructura base para que los
+# permisos de escritura (grupo de la app) queden aplicados de forma consistente.
+# Cualquier script que sincronice con Odoo (socios/actividades/pagos) debe
+# escribir dentro de esta misma raíz, nunca en rutas hardcodeadas.
+UPLOADS_BASE="${UPLOADS_DIR:-$ROOT/artifacts/api-server/uploads}"
+echo "==> ensure uploads directories ($UPLOADS_BASE)"
+mkdir -p \
+  "$UPLOADS_BASE/perfil" \
+  "$UPLOADS_BASE/socios/dni" \
+  "$UPLOADS_BASE/actividades" \
+  "$UPLOADS_BASE/pagos" \
+  "$UPLOADS_BASE/actas" \
+  "$UPLOADS_BASE/expedientes" \
+  "$UPLOADS_BASE/propuestas" \
+  "$UPLOADS_BASE/sugerencias" \
+  "$UPLOADS_BASE/estatutos" \
+  "$UPLOADS_BASE/articulos" \
+  "$UPLOADS_BASE/galeria" \
+  "$UPLOADS_BASE/hojas" \
+  "$UPLOADS_BASE/pulunpes"
+chmod -R 775 "$UPLOADS_BASE" 2>/dev/null || true
 
 if [ -d "$ROOT/tmp" ]; then
   echo "==> Passenger: touch tmp/restart.txt"

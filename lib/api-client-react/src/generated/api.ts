@@ -16,6 +16,16 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
+/**
+ * Opciones de query con `queryKey` opcional: el generador siempre
+ * inyecta el `queryKey` por defecto (getXxxQueryKey) si el consumidor
+ * no proporciona uno propio.
+ */
+type QueryOptionsCompat<TQueryFnData, TError, TData = TQueryFnData> = Omit<
+  UseQueryOptions<TQueryFnData, TError, TData>,
+  "queryKey"
+> & { queryKey?: QueryKey };
+
 import type {
   Actividad,
   ActividadesList,
@@ -71,7 +81,7 @@ export const getHealthCheckQueryOptions = <
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: UseQueryOptions<
+  query?: QueryOptionsCompat<
     Awaited<ReturnType<typeof healthCheck>>,
     TError,
     TData
@@ -106,7 +116,7 @@ export function useHealthCheck<
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: UseQueryOptions<
+  query?: QueryOptionsCompat<
     Awaited<ReturnType<typeof healthCheck>>,
     TError,
     TData
@@ -230,7 +240,7 @@ export const getGetMeQueryOptions = <
   TData = Awaited<ReturnType<typeof getMe>>,
   TError = ErrorType<ErrorResponse>,
 >(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
+  query?: QueryOptionsCompat<Awaited<ReturnType<typeof getMe>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -259,7 +269,7 @@ export function useGetMe<
   TData = Awaited<ReturnType<typeof getMe>>,
   TError = ErrorType<ErrorResponse>,
 >(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
+  query?: QueryOptionsCompat<Awaited<ReturnType<typeof getMe>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetMeQueryOptions(options);
@@ -310,7 +320,7 @@ export const getGetActividadesQueryOptions = <
 >(
   params?: GetActividadesParams,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getActividades>>,
       TError,
       TData
@@ -348,7 +358,7 @@ export function useGetActividades<
 >(
   params?: GetActividadesParams,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getActividades>>,
       TError,
       TData
@@ -392,7 +402,7 @@ export const getGetActividadQueryOptions = <
 >(
   id: number,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getActividad>>,
       TError,
       TData
@@ -435,7 +445,7 @@ export function useGetActividad<
 >(
   id: number,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getActividad>>,
       TError,
       TData
@@ -662,7 +672,7 @@ export const getGetEventosQueryOptions = <
 >(
   params?: GetEventosParams,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getEventos>>,
       TError,
       TData
@@ -700,7 +710,7 @@ export function useGetEventos<
 >(
   params?: GetEventosParams,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getEventos>>,
       TError,
       TData
@@ -744,7 +754,7 @@ export const getGetEventoQueryOptions = <
 >(
   id: number,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getEvento>>,
       TError,
       TData
@@ -785,7 +795,7 @@ export function useGetEvento<
 >(
   id: number,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getEvento>>,
       TError,
       TData
@@ -841,7 +851,7 @@ export const getGetNoticiasQueryOptions = <
 >(
   params?: GetNoticiasParams,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getNoticias>>,
       TError,
       TData
@@ -879,7 +889,7 @@ export function useGetNoticias<
 >(
   params?: GetNoticiasParams,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getNoticias>>,
       TError,
       TData
@@ -923,7 +933,7 @@ export const getGetNoticiaQueryOptions = <
 >(
   id: number,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getNoticia>>,
       TError,
       TData
@@ -966,7 +976,7 @@ export function useGetNoticia<
 >(
   id: number,
   options?: {
-    query?: UseQueryOptions<
+    query?: QueryOptionsCompat<
       Awaited<ReturnType<typeof getNoticia>>,
       TError,
       TData
@@ -1007,7 +1017,7 @@ export const getGetServiciosQueryOptions = <
   TData = Awaited<ReturnType<typeof getServicios>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: UseQueryOptions<
+  query?: QueryOptionsCompat<
     Awaited<ReturnType<typeof getServicios>>,
     TError,
     TData
@@ -1042,7 +1052,7 @@ export function useGetServicios<
   TData = Awaited<ReturnType<typeof getServicios>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: UseQueryOptions<
+  query?: QueryOptionsCompat<
     Awaited<ReturnType<typeof getServicios>>,
     TError,
     TData

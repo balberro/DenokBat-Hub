@@ -1,20 +1,26 @@
 import { Router, type IRouter } from "express";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, or } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { actasAsambleaTable, cargosTable, configTable, estatutosTable, historicoCargosTable, sociosTable, usersTable } from "@workspace/db/schema";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getPrimaryRole, getUserRoles, setUserRoles } from "../lib/roles";
+import { uploadsDir as uploadsRootDir } from "../lib/storage";
 
 const router: IRouter = Router();
 
 const CONFIG_KEYS = {
   quienesSomosTitle: "nosotros.quienes_somos_title",
+  quienesSomosTitleEu: "nosotros.quienes_somos_title_eu",
+  quienesSomosSubtitle: "nosotros.quienes_somos_subtitle",
+  quienesSomosSubtitleEu: "nosotros.quienes_somos_subtitle_eu",
   presentacionTitle: "nosotros.presentacion_title",
   historiaEs: "nosotros.historia_es",
   historiaEu: "nosotros.historia_eu",
+  estatutosIntroEs: "nosotros.estatutos_intro_es",
+  estatutosIntroEu: "nosotros.estatutos_intro_eu",
   hitosJson: "nosotros.hitos_json",
 } as const;
 
@@ -82,7 +88,7 @@ async function persistPdfIfNeeded(value: unknown): Promise<string | null> {
   const base64 = match[2];
   const ext = inferExtensionFromMime(mime);
   const fileName = `estatutos-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadsDir = path.resolve(process.cwd(), "artifacts/api-server/uploads/estatutos");
+  const uploadsDir = uploadsRootDir("estatutos");
   await mkdir(uploadsDir, { recursive: true });
   await writeFile(path.join(uploadsDir, fileName), Buffer.from(base64, "base64"));
   return `/uploads/estatutos/${fileName}`;
@@ -97,6 +103,73 @@ async function ensureDefaultCargos() {
       ambito: item.ambito,
     }).onConflictDoNothing();
   }
+}
+
+/**
+ * Crea las tablas de "Nosotros" (cargos, histórico, estatutos y actas de
+ * asamblea) si no existen. Idempotente: no toca tablas ni datos ya creados.
+ * Es el equivalente automático del botón "bootstrap" de la página AdminDB,
+ * evitando que el alta de estatutos/actas falle si la BD no tiene aún esas
+ * tablas (p. ej. despliegues antiguos).
+ */
+async function ensureNosotrosSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS db_cargos (
+      id serial PRIMARY KEY,
+      codigo varchar(100) NOT NULL UNIQUE,
+      nombre varchar(255) NOT NULL,
+      nombre_eu varchar(255),
+      ambito varchar(30) NOT NULL DEFAULT 'directivo',
+      activo integer NOT NULL DEFAULT 1,
+      created_at timestamp DEFAULT now(),
+      updated_at timestamp DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS db_historico_cargos (
+      id serial PRIMARY KEY,
+      socio_id integer NOT NULL,
+      cargo_id integer NOT NULL,
+      fecha_inicio date NOT NULL,
+      fecha_fin date,
+      descripcion text,
+      descripcion_eu text,
+      created_at timestamp DEFAULT now(),
+      updated_at timestamp DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS db_estatutos (
+      id serial PRIMARY KEY,
+      titulo varchar(255) NOT NULL,
+      titulo_eu varchar(255),
+      pdf_url text NOT NULL,
+      pdf_url_eu text,
+      vigencia_desde date NOT NULL,
+      vigencia_hasta date,
+      created_at timestamp DEFAULT now(),
+      updated_at timestamp DEFAULT now()
+    );
+    ALTER TABLE db_estatutos ADD COLUMN IF NOT EXISTS pdf_url_eu text;
+
+    CREATE TABLE IF NOT EXISTS db_actas_asamblea (
+      id serial PRIMARY KEY,
+      titulo varchar(255) NOT NULL,
+      titulo_eu varchar(255),
+      pdf_url text NOT NULL,
+      fecha_acta date NOT NULL,
+      created_at timestamp DEFAULT now(),
+      updated_at timestamp DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_db_cargos_ambito ON db_cargos(ambito);
+    CREATE INDEX IF NOT EXISTS idx_db_cargos_activo ON db_cargos(activo);
+    CREATE INDEX IF NOT EXISTS idx_db_historico_cargos_socio_id ON db_historico_cargos(socio_id);
+    CREATE INDEX IF NOT EXISTS idx_db_historico_cargos_cargo_id ON db_historico_cargos(cargo_id);
+    CREATE INDEX IF NOT EXISTS idx_db_historico_cargos_fecha_inicio ON db_historico_cargos(fecha_inicio);
+    CREATE INDEX IF NOT EXISTS idx_db_historico_cargos_fecha_fin ON db_historico_cargos(fecha_fin);
+    CREATE INDEX IF NOT EXISTS idx_db_estatutos_vigencia_desde ON db_estatutos(vigencia_desde);
+    CREATE INDEX IF NOT EXISTS idx_db_estatutos_vigencia_hasta ON db_estatutos(vigencia_hasta);
+    CREATE INDEX IF NOT EXISTS idx_db_actas_asamblea_fecha_acta ON db_actas_asamblea(fecha_acta);
+  `);
 }
 
 function parseHitos(raw: string | null | undefined): HitoItem[] {
@@ -145,6 +218,7 @@ async function safeSelectNosotrosDocs() {
 
 router.get("/nosotros/public", async (_req, res): Promise<void> => {
   try {
+    await ensureNosotrosSchema();
     await ensureDefaultCargos();
     const today = new Date().toISOString().slice(0, 10);
     const config = await getConfigMap();
@@ -153,6 +227,7 @@ router.get("/nosotros/public", async (_req, res): Promise<void> => {
     const organigrama = await db.select({
       id: historicoCargosTable.id,
       ambito: cargosTable.ambito,
+      cargoCodigo: cargosTable.codigo,
       cargo: cargosTable.nombre,
       cargoEu: cargosTable.nombreEu,
       descripcion: historicoCargosTable.descripcion,
@@ -190,6 +265,7 @@ router.get("/nosotros/public", async (_req, res): Promise<void> => {
         nombre: `${item.nombre ?? ""} ${item.apellidos ?? ""}`.trim(),
         cargo: item.cargo ?? "",
         cargoEu: item.cargoEu ?? item.cargo ?? "",
+        cargoCodigo: item.cargoCodigo ?? "",
         descripcion: item.descripcion ?? "",
         descripcionEu: item.descripcionEu ?? item.descripcion ?? "",
         foto: item.avatarUrl ?? "",
@@ -209,9 +285,14 @@ router.get("/nosotros/public", async (_req, res): Promise<void> => {
     res.json({
       textos: {
         quienesSomosTitle: config.get(CONFIG_KEYS.quienesSomosTitle) ?? "",
+        quienesSomosTitleEu: config.get(CONFIG_KEYS.quienesSomosTitleEu) ?? "",
+        quienesSomosSubtitle: config.get(CONFIG_KEYS.quienesSomosSubtitle) ?? "",
+        quienesSomosSubtitleEu: config.get(CONFIG_KEYS.quienesSomosSubtitleEu) ?? "",
         presentacionTitle: config.get(CONFIG_KEYS.presentacionTitle) ?? "",
         historiaEs: config.get(CONFIG_KEYS.historiaEs) ?? "",
         historiaEu: config.get(CONFIG_KEYS.historiaEu) ?? "",
+        estatutosIntroEs: config.get(CONFIG_KEYS.estatutosIntroEs) ?? "",
+        estatutosIntroEu: config.get(CONFIG_KEYS.estatutosIntroEu) ?? "",
       },
       hitos: parseHitos(config.get(CONFIG_KEYS.hitosJson) ?? null),
       estatutos: {
@@ -228,6 +309,7 @@ router.get("/nosotros/public", async (_req, res): Promise<void> => {
 
 router.get("/admin/nosotros", requireAuth, requireRole("directivo", "administrador"), async (_req, res): Promise<void> => {
   try {
+    await ensureNosotrosSchema();
     await ensureDefaultCargos();
     const config = await getConfigMap();
     const [{ estatutosRows: estatutos, actasRows: actasAsamblea }, cargos, historico, socios, adminUsers] = await Promise.all([
@@ -248,9 +330,14 @@ router.get("/admin/nosotros", requireAuth, requireRole("directivo", "administrad
     res.json({
       textos: {
         quienesSomosTitle: config.get(CONFIG_KEYS.quienesSomosTitle) ?? "",
+        quienesSomosTitleEu: config.get(CONFIG_KEYS.quienesSomosTitleEu) ?? "",
+        quienesSomosSubtitle: config.get(CONFIG_KEYS.quienesSomosSubtitle) ?? "",
+        quienesSomosSubtitleEu: config.get(CONFIG_KEYS.quienesSomosSubtitleEu) ?? "",
         presentacionTitle: config.get(CONFIG_KEYS.presentacionTitle) ?? "",
         historiaEs: config.get(CONFIG_KEYS.historiaEs) ?? "",
         historiaEu: config.get(CONFIG_KEYS.historiaEu) ?? "",
+        estatutosIntroEs: config.get(CONFIG_KEYS.estatutosIntroEs) ?? "",
+        estatutosIntroEu: config.get(CONFIG_KEYS.estatutosIntroEu) ?? "",
       },
       hitos: parseHitos(config.get(CONFIG_KEYS.hitosJson) ?? null),
       cargos,
@@ -272,9 +359,14 @@ router.put("/admin/nosotros/config", requireAuth, requireRole("directivo", "admi
   const hitos = (req.body?.hitos ?? []) as unknown[];
   const updates = [
     { clave: CONFIG_KEYS.quienesSomosTitle, valor: normalizeText(textos.quienesSomosTitle) },
+    { clave: CONFIG_KEYS.quienesSomosTitleEu, valor: normalizeText(textos.quienesSomosTitleEu) },
+    { clave: CONFIG_KEYS.quienesSomosSubtitle, valor: normalizeText(textos.quienesSomosSubtitle) },
+    { clave: CONFIG_KEYS.quienesSomosSubtitleEu, valor: normalizeText(textos.quienesSomosSubtitleEu) },
     { clave: CONFIG_KEYS.presentacionTitle, valor: normalizeText(textos.presentacionTitle) },
     { clave: CONFIG_KEYS.historiaEs, valor: normalizeText(textos.historiaEs) },
     { clave: CONFIG_KEYS.historiaEu, valor: normalizeText(textos.historiaEu) },
+    { clave: CONFIG_KEYS.estatutosIntroEs, valor: normalizeText(textos.estatutosIntroEs) },
+    { clave: CONFIG_KEYS.estatutosIntroEu, valor: normalizeText(textos.estatutosIntroEu) },
     {
       clave: CONFIG_KEYS.hitosJson,
       valor: JSON.stringify(
@@ -397,7 +489,7 @@ router.delete("/admin/nosotros/cargos/:id", requireAuth, requireRole("directivo"
   }
 });
 
-router.post("/admin/nosotros/historico", requireAuth, requireRole("directivo", "administrador"), async (req, res): Promise<void> => {
+router.post("/admin/nosotros/historico", requireAuth, requireRole("contable", "directivo", "administrador"), async (req, res): Promise<void> => {
   const payload = req.body ?? {};
   const socioId = Number(payload.socioId);
   const cargoId = Number(payload.cargoId);
@@ -468,7 +560,7 @@ router.post("/admin/nosotros/historico", requireAuth, requireRole("directivo", "
   }
 });
 
-router.put("/admin/nosotros/historico/:id", requireAuth, requireRole("directivo", "administrador"), async (req, res): Promise<void> => {
+router.put("/admin/nosotros/historico/:id", requireAuth, requireRole("contable", "directivo", "administrador"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "id inválido" });
@@ -547,6 +639,24 @@ router.put("/admin/nosotros/historico/:id", requireAuth, requireRole("directivo"
   }
 });
 
+router.delete("/admin/nosotros/historico/:id", requireAuth, requireRole("contable", "directivo", "administrador"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "id inválido" });
+    return;
+  }
+  try {
+    const [deleted] = await db.delete(historicoCargosTable).where(eq(historicoCargosTable.id, id)).returning();
+    if (!deleted) {
+      res.status(404).json({ error: "Histórico no encontrado" });
+      return;
+    }
+    res.json({ ok: true, id });
+  } catch (err) {
+    res.status(500).json({ error: "Error eliminando histórico de cargo", detalle: String(err) });
+  }
+});
+
 router.get("/admin/nosotros/historico", requireAuth, requireRole("contable", "directivo", "administrador"), async (req, res): Promise<void> => {
   const socioId = Number(req.query.socioId);
   const cargoId = Number(req.query.cargoId);
@@ -606,24 +716,6 @@ router.get("/admin/nosotros/historico", requireAuth, requireRole("contable", "di
   }
 });
 
-router.delete("/admin/nosotros/historico/:id", requireAuth, requireRole("directivo", "administrador"), async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    res.status(400).json({ error: "id inválido" });
-    return;
-  }
-  try {
-    const deleted = await db.delete(historicoCargosTable).where(eq(historicoCargosTable.id, id)).returning();
-    if (!deleted.length) {
-      res.status(404).json({ error: "Histórico no encontrado" });
-      return;
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: "Error eliminando histórico de cargo", detalle: String(err) });
-  }
-});
-
 router.post("/admin/nosotros/estatutos", requireAuth, requireRole("directivo", "administrador"), async (req, res): Promise<void> => {
   const payload = req.body ?? {};
   const titulo = normalizeText(payload.titulo);
@@ -634,15 +726,23 @@ router.post("/admin/nosotros/estatutos", requireAuth, requireRole("directivo", "
     return;
   }
   try {
+    await ensureNosotrosSchema();
     const pdfUrl = await persistPdfIfNeeded(payload.pdfUrl);
     if (!pdfUrl) {
       res.status(400).json({ error: "pdfUrl no válido" });
+      return;
+    }
+    const pdfUrlEuRaw = normalizeText(payload.pdfUrlEu);
+    const pdfUrlEu = pdfUrlEuRaw ? await persistPdfIfNeeded(payload.pdfUrlEu) : null;
+    if (pdfUrlEuRaw && !pdfUrlEu) {
+      res.status(400).json({ error: "pdfUrlEu no válido" });
       return;
     }
     const [created] = await db.insert(estatutosTable).values({
       titulo,
       tituloEu: normalizeText(payload.tituloEu) || null,
       pdfUrl,
+      pdfUrlEu,
       vigenciaDesde,
       vigenciaHasta: vigenciaHasta || null,
       updatedAt: new Date(),
@@ -661,6 +761,7 @@ router.put("/admin/nosotros/estatutos/:id", requireAuth, requireRole("directivo"
   }
   const payload = req.body ?? {};
   try {
+    await ensureNosotrosSchema();
     const current = await db.select().from(estatutosTable).where(eq(estatutosTable.id, id)).limit(1);
     if (!current.length) {
       res.status(404).json({ error: "Estatuto no encontrado" });
@@ -669,10 +770,24 @@ router.put("/admin/nosotros/estatutos/:id", requireAuth, requireRole("directivo"
     const pdfUrl = payload.pdfUrl !== undefined
       ? await persistPdfIfNeeded(payload.pdfUrl)
       : current[0].pdfUrl;
+    let pdfUrlEu: string | null = current[0].pdfUrlEu ?? null;
+    if (payload.pdfUrlEu !== undefined) {
+      const raw = String(payload.pdfUrlEu ?? "").trim();
+      if (raw) {
+        pdfUrlEu = await persistPdfIfNeeded(raw);
+        if (!pdfUrlEu) {
+          res.status(400).json({ error: "pdfUrlEu no válido" });
+          return;
+        }
+      } else {
+        pdfUrlEu = null;
+      }
+    }
     const [updated] = await db.update(estatutosTable).set({
       titulo: normalizeText(payload.titulo || current[0].titulo),
       tituloEu: normalizeText(payload.tituloEu ?? current[0].tituloEu ?? "") || null,
       pdfUrl: pdfUrl || current[0].pdfUrl,
+      pdfUrlEu,
       vigenciaDesde: normalizeText(payload.vigenciaDesde || current[0].vigenciaDesde),
       vigenciaHasta: normalizeText(payload.vigenciaHasta ?? current[0].vigenciaHasta ?? "") || null,
       updatedAt: new Date(),
@@ -690,6 +805,7 @@ router.delete("/admin/nosotros/estatutos/:id", requireAuth, requireRole("directi
     return;
   }
   try {
+    await ensureNosotrosSchema();
     const deleted = await db.delete(estatutosTable).where(eq(estatutosTable.id, id)).returning();
     if (!deleted.length) {
       res.status(404).json({ error: "Estatuto no encontrado" });
@@ -710,6 +826,7 @@ router.post("/admin/nosotros/actas", requireAuth, requireRole("directivo", "admi
     return;
   }
   try {
+    await ensureNosotrosSchema();
     const pdfUrl = await persistPdfIfNeeded(payload.pdfUrl);
     if (!pdfUrl) {
       res.status(400).json({ error: "pdfUrl no válido" });
@@ -736,6 +853,7 @@ router.put("/admin/nosotros/actas/:id", requireAuth, requireRole("directivo", "a
   }
   const payload = req.body ?? {};
   try {
+    await ensureNosotrosSchema();
     const current = await db.select().from(actasAsambleaTable).where(eq(actasAsambleaTable.id, id)).limit(1);
     if (!current.length) {
       res.status(404).json({ error: "Acta no encontrada" });
@@ -764,6 +882,7 @@ router.delete("/admin/nosotros/actas/:id", requireAuth, requireRole("directivo",
     return;
   }
   try {
+    await ensureNosotrosSchema();
     const deleted = await db.delete(actasAsambleaTable).where(eq(actasAsambleaTable.id, id)).returning();
     if (!deleted.length) {
       res.status(404).json({ error: "Acta no encontrada" });
@@ -1007,7 +1126,7 @@ router.put("/admin/roles/users/:userId", requireAuth, requireRole("administrador
 
   try {
     const nextRoles = rolesPayload
-      ? Array.from(new Set(rolesPayload.map((item) => String(item ?? "").trim().toLowerCase()).filter(Boolean)))
+      ? Array.from(new Set(rolesPayload.map((item: unknown) => String(item ?? "").trim().toLowerCase()).filter(Boolean)))
       : [role];
     if (!nextRoles.includes("usuario")) nextRoles.push("usuario");
     const persistedRoles = await setUserRoles(userId, nextRoles);

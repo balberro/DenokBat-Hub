@@ -426,6 +426,8 @@ export default function GestionSocios() {
   });
   const [contableSearch, setContableSearch] = useState("");
   const [historicoSearch, setHistoricoSearch] = useState("");
+  const [historicoNotice, setHistoricoNotice] = useState("");
+  const [historicoEditingId, setHistoricoEditingId] = useState<number | null>(null);
   const [contableFilters, setContableFilters] = useState({
     socioId: "",
     cargoId: "",
@@ -816,6 +818,9 @@ export default function GestionSocios() {
     });
     setNotice("");
     setShowForm(true);
+    setTimeout(() => {
+      document.getElementById("socio-edit-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const aplicarGrupoAutomaticoEdicion = async () => {
@@ -960,18 +965,22 @@ export default function GestionSocios() {
 
   const saveHistoricoCargo = async () => {
     if (!token || !historicoForm.socioId || !historicoForm.cargoId || !historicoForm.fechaInicio) {
-      setNotice("socio, cargo y fechaInicio son obligatorios.");
+      setHistoricoNotice("socio, cargo y fechaInicio son obligatorios.");
       return;
     }
     if (historicoForm.cargoId === "nuevo") {
-      setNotice("Primero crea el nuevo cargo y luego selecciónalo.");
+      setHistoricoNotice("Primero crea el nuevo cargo y luego selecciónalo.");
       return;
     }
     setSaving(true);
-    setNotice("");
+    setHistoricoNotice("");
     try {
-      const r = await fetch(`${API}/admin/nosotros/historico`, {
-        method: "POST",
+      const isEditing = historicoEditingId != null;
+      const url = isEditing
+        ? `${API}/admin/nosotros/historico/${historicoEditingId}`
+        : `${API}/admin/nosotros/historico`;
+      const r = await fetch(url, {
+        method: isEditing ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -989,13 +998,45 @@ export default function GestionSocios() {
         throw new Error(String(d?.error ?? "No se pudo guardar histórico"));
       }
       setHistoricoForm({ socioId: "", cargoId: "", fechaInicio: "", fechaFin: "", descripcion: "" });
+      setHistoricoEditingId(null);
       await loadHistorico({});
-      setNotice("Histórico de cargo guardado.");
+      setHistoricoNotice(isEditing ? "Histórico de cargo actualizado." : "Histórico de cargo guardado.");
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Error guardando histórico de cargo");
+      setHistoricoNotice(err instanceof Error ? err.message : "Error guardando histórico de cargo");
     } finally {
       setSaving(false);
     }
+  };
+
+  const selectHistoricoForEdit = (row: HistoricoCargoRow) => {
+    setHistoricoEditingId(row.id);
+    setHistoricoForm({
+      socioId: String(row.socioId ?? ""),
+      cargoId: String(row.cargoId ?? ""),
+      fechaInicio: String(row.fechaInicio ?? ""),
+      fechaFin: String(row.fechaFin ?? ""),
+      descripcion: String(row.descripcion ?? ""),
+    });
+    setHistoricoNotice("");
+    // Precarga el cargo de la fila en el panel «Modificar cargo / crear nuevo».
+    const cargo = cargos.find((c) => c.id === Number(row.cargoId));
+    if (cargo) {
+      setNewCargoForm({
+        codigo: String(cargo.codigo ?? ""),
+        nombre: String(cargo.nombre ?? ""),
+        nombreEu: String(cargo.nombreEu ?? ""),
+        ambito: String(cargo.ambito ?? "directivo"),
+      });
+    }
+    // Lleva el foco al formulario de asignación (debajo del título).
+    document.getElementById("asignacion-cargos-form")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  const cancelHistoricoEdit = () => {
+    setHistoricoEditingId(null);
+    setHistoricoForm({ socioId: "", cargoId: "", fechaInicio: "", fechaFin: "", descripcion: "" });
+    setHistoricoNotice("");
+    setNewCargoForm({ codigo: "", nombre: "", nombreEu: "", ambito: "directivo" });
   };
 
   const contableRows = useMemo(
@@ -1016,7 +1057,8 @@ export default function GestionSocios() {
         const q = historicoSearch.trim().toLowerCase();
         if (!q) return true;
         const who = `${row.nombre ?? ""} ${row.apellidos ?? ""}`.toLowerCase();
-        return who.includes(q);
+        const cargo = `${row.cargoNombre ?? ""} ${row.cargoNombreEu ?? ""} ${row.cargoCodigo ?? ""}`.toLowerCase();
+        return who.includes(q) || cargo.includes(q);
       }),
     [historico, historicoSearch],
   );
@@ -1674,7 +1716,15 @@ export default function GestionSocios() {
       {subsection === "historico" && (
         <div className="mb-8 rounded-2xl border border-border bg-white p-4 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">{t("socios.positions.assign_title")}</h2>
-          <div className="grid md:grid-cols-5 gap-2">
+          {historicoEditingId != null && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <p className="text-sm font-medium text-foreground">{t("socios.positions.editing_assignment")}</p>
+              <Button type="button" size="sm" variant="ghost" onClick={cancelHistoricoEdit} disabled={saving}>
+                {t("common.cancel")}
+              </Button>
+            </div>
+          )}
+          <div id="asignacion-cargos-form" className="grid md:grid-cols-5 gap-2">
             <select
               value={historicoForm.cargoId}
               onChange={(e) => {
@@ -1710,8 +1760,14 @@ export default function GestionSocios() {
             </select>
             <input type="date" value={historicoForm.fechaInicio} onChange={(e) => setHistoricoForm((p) => ({ ...p, fechaInicio: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background" />
             <input type="date" value={historicoForm.fechaFin} onChange={(e) => setHistoricoForm((p) => ({ ...p, fechaFin: e.target.value }))} className="px-3 py-2 rounded-lg border border-border bg-background" />
-            <Button onClick={saveHistoricoCargo} disabled={saving}>{saving ? t("common.saving") : t("socios.positions.button.save_assignment")}</Button>
+            <Button onClick={saveHistoricoCargo} disabled={saving}>{saving ? t("common.saving") : historicoEditingId != null ? t("socios.positions.button.update_assignment") : t("socios.positions.button.save_assignment")}</Button>
           </div>
+          <input
+            value={historicoForm.descripcion}
+            onChange={(e) => setHistoricoForm((p) => ({ ...p, descripcion: e.target.value }))}
+            placeholder={t("socios.positions.description_optional")}
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background"
+          />
           {(historicoForm.cargoId === "nuevo" || Number.isFinite(Number(historicoForm.cargoId))) && (
             <div className="rounded-xl border border-border p-3 space-y-2">
               <p className="text-sm font-semibold text-foreground">Modificar cargo / crear nuevo</p>
@@ -1752,9 +1808,10 @@ export default function GestionSocios() {
           <input
             value={historicoSearch}
             onChange={(e) => setHistoricoSearch(e.target.value)}
-            placeholder={t("socios.positions.search.assign_placeholder")}
+            placeholder={t("socios.positions.search.historic_placeholder")}
             className="w-full px-3 py-2 rounded-lg border border-border bg-background"
           />
+          {historicoNotice && <p className="text-sm text-muted-foreground">{historicoNotice}</p>}
           <div className="space-y-2">
             {historicoLoading && <p className="text-sm text-muted-foreground">{t("socios.positions.loading_assignments")}</p>}
             {!historicoLoading && historicoRows.length > 0 && (
@@ -1768,7 +1825,11 @@ export default function GestionSocios() {
               </div>
             )}
             {!historicoLoading && historicoRows.map((row) => (
-              <div key={row.id} className="rounded-lg border border-border p-3">
+              <div
+                key={row.id}
+                className={`rounded-lg border border-border p-3 cursor-pointer transition-colors ${historicoEditingId === row.id ? "bg-primary/5 border-primary/40" : "hover:bg-muted/20"}`}
+                onClick={() => selectHistoricoForEdit(row)}
+              >
                 <div className="grid md:grid-cols-4 gap-2 text-sm">
                   <p className="text-foreground">{getCargoLabel(row)}</p>
                   <p className="text-foreground">{`${row.nombre ?? ""} ${row.apellidos ?? ""}`.trim() || "-"}</p>
@@ -1787,10 +1848,18 @@ export default function GestionSocios() {
       {subsection === "socios" && (
       <>
       {showForm && (
-        <div className="mb-6 rounded-2xl border border-border bg-white p-4 space-y-4">
+        <div id="socio-edit-form" className="mb-6 rounded-2xl border border-border bg-white p-4 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">
             {editingId ? t("socios.form.title.edit") : t("socios.form.title.create")}
           </h2>
+          {editingId != null && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <p className="text-sm font-medium text-foreground">{t("socios.form.editing_member")}</p>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setShowForm(false)} disabled={saving}>
+                {t("common.cancel")}
+              </Button>
+            </div>
+          )}
           <div className="grid md:grid-cols-3 gap-3">
             <input value={form.nombre} onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))} placeholder={`${t("common.name")} *`} className="px-3 py-2 rounded-lg border border-border bg-background" />
             <input value={form.apellidos} onChange={(e) => setForm((p) => ({ ...p, apellidos: e.target.value }))} placeholder={t("common.surname")} className="px-3 py-2 rounded-lg border border-border bg-background" />
@@ -1927,7 +1996,7 @@ export default function GestionSocios() {
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={submitForm} disabled={saving}>{saving ? t("common.saving") : t("socios.form.save_member")}</Button>
+            <Button onClick={submitForm} disabled={saving}>{saving ? t("common.saving") : editingId != null ? t("socios.form.update_member") : t("socios.form.save_member")}</Button>
             <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>{t("common.cancel")}</Button>
           </div>
           {notice && <p className="text-sm text-muted-foreground mt-2">{notice}</p>}
@@ -2201,7 +2270,7 @@ export default function GestionSocios() {
               <tr
                 key={s.id}
                 className={`hover:bg-muted/20 transition-colors cursor-pointer ${selectedSocioId === s.id ? "bg-primary/5" : ""}`}
-                onClick={() => setSelectedSocioId(s.id)}
+                onClick={() => { setSelectedSocioId(s.id); void openEdit(s); }}
               >
                 <td className="px-4 py-3">
                   {s.avatarUrl ? (
@@ -2277,8 +2346,8 @@ export default function GestionSocios() {
                 <td className="px-4 py-3 text-muted-foreground">{s.tipologia || "-"}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1.5">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(s)}><Edit className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => { e.stopPropagation(); void openEdit(s); }}><Edit className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-700" onClick={(e) => e.stopPropagation()}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </td>
               </tr>
