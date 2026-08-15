@@ -57,6 +57,13 @@ mkdir -p \
   "$UPLOADS_BASE/pulunpes"
 chmod -R 775 "$UPLOADS_BASE" 2>/dev/null || true
 
+# Carpeta de recepción de dumps para publicar tablas entre entornos
+# (export-table.sh / export-many.sh en local → publish-table.sh aquí).
+EXPORTS_DIR="${EXPORTS_DIR:-$ROOT/scripts/exports}"
+echo "==> ensure exports directory ($EXPORTS_DIR)"
+mkdir -p "$EXPORTS_DIR"
+chmod -R 775 "$EXPORTS_DIR" 2>/dev/null || true
+
 if [ -d "$ROOT/tmp" ]; then
   echo "==> Passenger: touch tmp/restart.txt"
   touch "$ROOT/tmp/restart.txt"
