@@ -64,4 +64,8 @@ denokbat_local.sql
 
 # API: ficheros subidos en runtime (avatares, galería, etc.)
 artifacts/api-server/uploads/
+
+# Dumps de tablas exportados para publicar entre entornos (publish/export)
+scripts/exports/
+
 artifacts/api-server/artifacts/
