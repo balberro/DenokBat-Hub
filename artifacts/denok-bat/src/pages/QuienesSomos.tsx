@@ -227,105 +227,81 @@ function EstatutosTab({ lang, data }: { lang: string; data: NosotrosData }) {
   );
 }
 
-const MESES = [
-  { n: "01", es: "Enero", eu: "Urtarrila" },
-  { n: "02", es: "Febrero", eu: "Otsaila" },
-  { n: "03", es: "Marzo", eu: "Martxoa" },
-  { n: "04", es: "Abril", eu: "Apirila" },
-  { n: "05", es: "Mayo", eu: "Maiatza" },
-  { n: "06", es: "Junio", eu: "Ekaina" },
-  { n: "07", es: "Julio", eu: "Uztaila" },
-  { n: "08", es: "Agosto", eu: "Abuztua" },
-  { n: "09", es: "Septiembre", eu: "Iraila" },
-  { n: "10", es: "Octubre", eu: "Urria" },
-  { n: "11", es: "Noviembre", eu: "Azaroa" },
-  { n: "12", es: "Diciembre", eu: "Abendua" },
-];
-
 function ActasTab({ lang, data }: { lang: string; data: NosotrosData }) {
   const { t } = useTranslation();
-  const actas = data.actasAsamblea; // ya ordenadas desc por fecha desde el backend
-  const [filtroAnio, setFiltroAnio] = useState("");
-  const [filtroMes, setFiltroMes] = useState("");
+  // Las actas de asamblea se publican desde `db_actas_asamblea`
+  // (endpoint público /nosotros/public -> actasAsamblea), ya ordenadas
+  // desc por fecha desde el backend.
+  const actas = data.actasAsamblea;
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const anios = Array.from(new Set(actas.map((a) => (a.fechaActa || "").slice(0, 4)).filter(Boolean))).sort((a, b) => b.localeCompare(a));
-  const hayFiltro = Boolean(filtroAnio || filtroMes);
-  const filtradas = actas.filter((a) => {
-    const f = a.fechaActa || "";
-    if (filtroAnio && f.slice(0, 4) !== filtroAnio) return false;
-    if (filtroMes && f.slice(0, 7) !== `${filtroAnio}-${filtroMes}`) return false;
-    return true;
-  });
-  const visibles = hayFiltro ? filtradas : filtradas.slice(0, 12);
-  const mostrarNota = !hayFiltro && actas.length > 12;
+  const seleccionada = actas.find((a) => a.id === selectedId) ?? null;
+  // Se muestran las 5 últimas; el resto queda accesible con scroll.
+  const visibles = actas.slice(0, 5);
+  const hayMas = actas.length > 5;
+
+  const titulo = (a: NosotrosData["actasAsamblea"][number]) =>
+    lang === "eu" ? (a.tituloEu || a.titulo) : a.titulo;
 
   return (
     <div className="space-y-6">
-      {actas.length > 0 && (
+      {actas.length > 0 && actas[0].pdfUrl && (
         <div className="flex gap-3">
-          <a href={actas[0].pdfUrl} target="_blank" rel="noopener noreferrer">
+          <a href={resolveMediaUrl(actas[0].pdfUrl)} target="_blank" rel="noopener noreferrer">
             <Button className="gap-2"><Download className="w-4 h-4" />{t("actas.publico.abrir_ultimo")}</Button>
           </a>
         </div>
       )}
-      <div className="bg-white rounded-2xl border border-border shadow-sm p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h3 className="text-lg font-semibold text-foreground">{t("actas.publico.indice")}</h3>
-          {actas.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={filtroAnio}
-                onChange={(e) => { setFiltroAnio(e.target.value); setFiltroMes(""); }}
-                className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-3">{t("historial_actas.indice")}</h3>
+          {hayMas && <p className="text-xs text-muted-foreground mb-3">{t("historial_actas.nota_max")}</p>}
+          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {visibles.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setSelectedId(a.id)}
+                className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                  selectedId === a.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"
+                }`}
               >
-                <option value="">{t("actas.publico.filtro_anio")}</option>
-                {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-              <select
-                value={filtroMes}
-                onChange={(e) => setFiltroMes(e.target.value)}
-                disabled={!filtroAnio}
-                className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm disabled:opacity-50"
-              >
-                <option value="">{t("actas.publico.filtro_mes")}</option>
-                {MESES.map((m) => <option key={m.n} value={m.n}>{lang === "eu" ? m.eu : m.es}</option>)}
-              </select>
-              {hayFiltro && (
-                <button onClick={() => { setFiltroAnio(""); setFiltroMes(""); }} className="text-sm text-primary hover:underline">
-                  {t("actas.publico.limpiar_filtros")}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        {mostrarNota && (
-          <p className="text-xs text-muted-foreground mb-3">
-            {t("actas.publico.nota_12")}
-          </p>
-        )}
-        <div className="space-y-2">
-          {visibles.map((a) => (
-            <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-              <div>
-                <p className="font-medium text-foreground">{lang === "eu" ? (a.tituloEu || a.titulo) : a.titulo}</p>
+                <p className="font-medium text-foreground">{titulo(a)}</p>
                 <p className="text-xs text-muted-foreground">{a.fechaActa}</p>
+              </button>
+            ))}
+            {visibles.length === 0 && (
+              <p className="text-sm text-muted-foreground">{t("actas.publico.vacio")}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-4 min-h-[320px] flex flex-col">
+          {!seleccionada || !seleccionada.pdfUrl ? (
+            <p className="text-sm text-muted-foreground m-auto">{t("historial_actas.select_one")}</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <p className="font-semibold text-foreground">{titulo(seleccionada)}</p>
+                  <p className="text-xs text-muted-foreground">{seleccionada.fechaActa}</p>
+                </div>
+                <div className="flex gap-2">
+                  <a href={resolveMediaUrl(seleccionada.pdfUrl)} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="sm">{t("actas.firmadas.abrir_pestana")}</Button>
+                  </a>
+                  <a href={resolveMediaUrl(seleccionada.pdfUrl)} download>
+                    <Button size="sm">{t("actas.publico.descargar")}</Button>
+                  </a>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <a href={a.pdfUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="sm">{t("actas.publico.ver_pdf")}</Button>
-                </a>
-                <a href={a.pdfUrl} download>
-                  <Button size="sm">{t("actas.publico.descargar")}</Button>
-                </a>
-              </div>
-            </div>
-          ))}
-          {visibles.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              {hayFiltro
-                ? t("actas.publico.sin_resultados")
-                : t("actas.publico.vacio")}
-            </p>
+              <iframe
+                key={seleccionada.id}
+                src={resolveMediaUrl(seleccionada.pdfUrl)}
+                title={seleccionada.titulo}
+                className="w-full flex-1 min-h-[520px] rounded-lg border border-border"
+              />
+            </>
           )}
         </div>
       </div>
@@ -564,7 +540,24 @@ function GaleriaTab({ lang }: { lang: string }) {
   );
 }
 
-const ACTAS_TAB_ROLES = new Set(["socio", "delegado", "directivo", "contable", "administrador"]);
+const SOCIOS_ROLES = new Set(["socio", "delegado", "directivo", "contable", "administrador"]);
+const REGISTRADO_ROLES = new Set(["usuario", "socio", "delegado", "directivo", "contable", "administrador"]);
+
+function AvisoRestringido({ socios, logueado }: { socios: boolean; logueado: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center">
+      <p className="text-muted-foreground">
+        {socios ? t("nosotros.tab.restricted_socios") : t("nosotros.tab.restricted_register")}
+      </p>
+      {!logueado && (
+        <Link href="/login">
+          <Button className="mt-4">{t("nav.login")}</Button>
+        </Link>
+      )}
+    </div>
+  );
+}
 
 export default function QuienesSomos() {
   const { lang, t } = useTranslation();
@@ -572,7 +565,10 @@ export default function QuienesSomos() {
   const [data, setData] = useState<NosotrosData>(DEFAULT_DATA);
   const user = useStore((s) => s.user);
   const roles = user ? getUserRoles(user) : [];
-  const verActas = roles.some((r) => ACTAS_TAB_ROLES.has(r));
+  const logueado = Boolean(user);
+  const esRegistrado = roles.some((r) => REGISTRADO_ROLES.has(r));
+  const esSocio = roles.some((r) => SOCIOS_ROLES.has(r));
+  const verActas = esSocio;
 
   useEffect(() => {
     let active = true;
@@ -616,17 +612,14 @@ export default function QuienesSomos() {
     };
   }, []);
 
-  const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
-    { key: "presentacion", label: "nosotros.tab.presentacion", icon: <Users className="w-4 h-4" /> },
-    { key: "estatutos", label: "nosotros.tab.estatutos", icon: <FileText className="w-4 h-4" /> },
-    { key: "organigrama", label: "nosotros.tab.organigrama", icon: <GitBranch className="w-4 h-4" /> },
-    { key: "galeria", label: "nosotros.tab.galeria", icon: <Users className="w-4 h-4" /> },
-    ...(verActas
-      ? ([
-          { key: "actas", label: "nosotros.tab.actas", icon: <ClipboardList className="w-4 h-4" /> },
-        ] as { key: Tab; label: string; icon: ReactNode }[])
-      : []),
+  const TABS: { key: Tab; label: string; icon: ReactNode; visible: boolean }[] = [
+    { key: "presentacion", label: "nosotros.tab.presentacion", icon: <Users className="w-4 h-4" />, visible: true },
+    { key: "estatutos", label: "nosotros.tab.estatutos", icon: <FileText className="w-4 h-4" />, visible: esRegistrado },
+    { key: "organigrama", label: "nosotros.tab.organigrama", icon: <GitBranch className="w-4 h-4" />, visible: esRegistrado },
+    { key: "galeria", label: "nosotros.tab.galeria", icon: <Users className="w-4 h-4" />, visible: esSocio },
+    { key: "actas", label: "nosotros.tab.actas", icon: <ClipboardList className="w-4 h-4" />, visible: verActas },
   ];
+  const tabsVisibles = TABS.filter((t2) => t2.visible);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -645,7 +638,7 @@ export default function QuienesSomos() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex gap-1 mb-8 overflow-x-auto pb-1 border-b border-border">
-          {TABS.map(tabBtn => (
+          {tabsVisibles.map(tabBtn => (
             <button key={tabBtn.key} onClick={() => setTab(tabBtn.key)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors -mb-px ${tab === tabBtn.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
               {tabBtn.icon}
@@ -655,10 +648,10 @@ export default function QuienesSomos() {
         </div>
 
         {tab === "presentacion" && <PresentacionTab lang={lang} data={data} />}
-        {tab === "estatutos" && <EstatutosTab lang={lang} data={data} />}
-        {tab === "organigrama" && <OrganigramaTab lang={lang} data={data} />}
-        {tab === "galeria" && <GaleriaTab lang={lang} />}
-        {tab === "actas" && verActas && <ActasTab lang={lang} data={data} />}
+        {tab === "estatutos" && (esRegistrado ? <EstatutosTab lang={lang} data={data} /> : <AvisoRestringido socios={false} logueado={logueado} />)}
+        {tab === "organigrama" && (esRegistrado ? <OrganigramaTab lang={lang} data={data} /> : <AvisoRestringido socios={false} logueado={logueado} />)}
+        {tab === "galeria" && (esSocio ? <GaleriaTab lang={lang} /> : <AvisoRestringido socios={true} logueado={logueado} />)}
+        {tab === "actas" && (verActas ? <ActasTab lang={lang} data={data} /> : <AvisoRestringido socios={true} logueado={logueado} />)}
       </div>
     </div>
   );

@@ -68,6 +68,7 @@ function Router() {
       <Route path="/admin/sugerencias" component={AreaPrivada} />
       <Route path="/admin/propuestas-junta" component={AreaPrivada} />
       <Route path="/admin/convocatorias" component={AreaPrivada} />
+      <Route path="/admin/actas/firmadas" component={AreaPrivada} />
       <Route path="/admin/actas" component={AreaPrivada} />
       <Route path="/historial-actas" component={AreaPrivada} />
       <Route path="/admin/expedientes" component={AreaPrivada} />

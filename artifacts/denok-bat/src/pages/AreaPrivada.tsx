@@ -26,6 +26,7 @@ import AdminGestionSugerencias from "./area/AdminGestionSugerencias";
 import BuzonPropuestas from "./area/BuzonPropuestas";
 import GestionConvocatorias from "./area/GestionConvocatorias";
 import GestionActas from "./area/GestionActas";
+import BuscadorActasFirmadas from "./area/BuscadorActasFirmadas";
 import HistorialActas from "./area/HistorialActas";
 import GestionExpedientes from "./area/GestionExpedientes";
 import SubvencionesNueva from "./area/SubvencionesNueva";
@@ -48,6 +49,7 @@ const allowedRoles: Record<string, string[]> = {
   "/admin/propuestas-junta": ["directivo"],
   "/admin/convocatorias": ["directivo", "contable"],
   "/admin/actas":         ["directivo", "contable"],
+  "/admin/actas/firmadas": ["directivo", "contable"],
   "/historial-actas":     ["socio","delegado","directivo","contable","administrador"],
   "/admin/expedientes":   ["directivo", "contable"],
   "/admin/socios":        ["contable","administrador"],
@@ -85,6 +87,7 @@ const components: Record<string, React.ComponentType> = {
   "/admin/propuestas-junta": BuzonPropuestas,
   "/admin/convocatorias": GestionConvocatorias,
   "/admin/actas":         GestionActas,
+  "/admin/actas/firmadas": BuscadorActasFirmadas,
   "/historial-actas":     HistorialActas,
   "/admin/expedientes":   GestionExpedientes,
   "/admin/socios":        GestionSocios,

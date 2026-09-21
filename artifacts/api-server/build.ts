@@ -62,6 +62,9 @@ async function buildAll() {
     outfile: path.resolve(distDir, "index.cjs"),
     define: {
       "process.env.NODE_ENV": '"production"',
+      // Versión embebida en el bundle a partir del package.json compilado,
+      // para poder consultarla en runtime (GET /api/version).
+      __APP_VERSION__: JSON.stringify(pkg.version ?? "0.0.0"),
     },
     minify: true,
     external: externals,
@@ -73,3 +76,4 @@ buildAll().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+

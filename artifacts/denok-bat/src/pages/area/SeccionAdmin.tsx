@@ -4,6 +4,7 @@ import { ExternalLink, Settings, Package, Shield, RefreshCw, Database, CheckCirc
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/use-store";
+import AppVersionPanel from "@/components/AppVersionPanel";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -708,6 +709,7 @@ export default function SeccionAdmin() {
             <p className="text-sm text-muted-foreground">Sistema de gestión backend</p>
           </div>
         </div>
+        <AppVersionPanel />
         <div className="bg-white rounded-2xl border border-border shadow-sm p-8 space-y-4">
           <p className="text-muted-foreground">Acceso al sistema de gestión Odoo 17</p>
           <p className="text-sm text-muted-foreground">
@@ -771,6 +773,9 @@ export default function SeccionAdmin() {
     <div className="max-w-3xl mx-auto px-4 py-12 text-center">
       <Shield className="w-12 h-12 text-primary mx-auto mb-4" />
       <h1 className="text-2xl font-bold text-foreground">{t("menu.roles")}</h1>
+      <div className="mt-6 text-left">
+        <AppVersionPanel />
+      </div>
     </div>
   );
 }
