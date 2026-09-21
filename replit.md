@@ -1,5 +1,8 @@
 # Workspace — Denok Bat
 
+> ⚠️ Este archivo está **desactualizado**. Para el contexto vivo del proyecto (cómo trabajar,
+> deploy a test, rama, módulos y registro de cambios) ver **`docs/CONTEXTO-PROYECTO.md`**.
+
 ## Overview
 
 App web para la Asociación de Jubilados Denok Bat (País Vasco). Bilingüe (Euskara / Español). Integración con Odoo 17 via XML-RPC. Arquitectura headless: base de datos local PostgreSQL sincronizada con Odoo.
