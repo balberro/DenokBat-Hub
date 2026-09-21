@@ -1,6 +1,7 @@
 -- Actas (V1).
 -- Flujo: Convocatoria -> Acta -> Expediente.
--- Estados V1: 'borrador' | 'completa' | 'firmada'.
+-- Estados: 'borrador' | 'completa' | 'aceptada'.
+-- (El estado legado 'firmada' se normaliza a 'aceptada'; ver fix-db-actas-aceptada.sql).
 -- El acta se crea desde una convocatoria y copia sus puntos del orden del día.
 -- Cada punto puede recoger acuerdo, resultado de propuesta y acción prevista
 -- sobre expediente ('abrir' | 'continuar' | 'cerrar').
@@ -49,7 +50,7 @@ BEGIN
   ) THEN
     ALTER TABLE db_actas
       ADD CONSTRAINT db_actas_estado_chk
-      CHECK (estado IN ('borrador', 'completa', 'firmada'));
+      CHECK (estado IN ('borrador', 'completa', 'aceptada'));
   END IF;
 
   IF NOT EXISTS (

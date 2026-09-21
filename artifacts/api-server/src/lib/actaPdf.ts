@@ -56,6 +56,61 @@ export function anyoMesDe(fecha: Date | string | null | undefined): string {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
 }
 
+/**
+ * Normaliza y valida una clave de archivo `YYYY-MM`. Devuelve `null` si no es
+ * válida (año de 4 dígitos y mes de 1-12), para poder caer a la fecha del acta.
+ */
+export function normalizarAnyoMes(input: unknown): string | null {
+  if (input == null) return null;
+  const raw = String(input).trim();
+  const m = raw.match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) return null;
+  const anyo = Number(m[1]);
+  const mes = Number(m[2]);
+  if (anyo < 1900 || anyo > 9999 || mes < 1 || mes > 12) return null;
+  return `${m[1]}-${pad2(mes)}`;
+}
+
+/** Nombres de mes en castellano (1 = enero). */
+const MESES_ES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+] as const;
+
+/** Devuelve el nombre del mes (1-12) en castellano. */
+export function nombreMesEs(mes: number): string {
+  if (!Number.isFinite(mes) || mes < 1 || mes > 12) return "";
+  return MESES_ES[mes - 1];
+}
+
+/**
+ * Título por defecto de un acta elaborada para un año-mes concreto, p. ej.
+ * `Acta: Mes de "mayo" de 2026`.
+ */
+export function tituloActaAnyoMes(anyoMes: string): string {
+  const m = /^(\d{4})-(\d{1,2})$/.exec(anyoMes.trim());
+  if (!m) return `Acta: ${anyoMes}`;
+  const mesNombre = nombreMesEs(Number(m[2]));
+  return `Acta: Mes de "${mesNombre}" de ${m[1]}`;
+}
+
+/** Primer día del mes para una clave `YYYY-MM` (para `fecha` del acta). */
+export function primerDiaAnyoMes(anyoMes: string): string | null {
+  const m = /^(\d{4})-(\d{1,2})$/.exec(anyoMes.trim());
+  if (!m) return null;
+  return `${m[1]}-${m[2].padStart(2, "0")}-01`;
+}
+
 async function exists(p: string): Promise<boolean> {
   try {
     await access(p, fsConstants.F_OK);
@@ -78,6 +133,11 @@ export async function persistActaPdf(args: {
   pdfDataUrl: string;
   fecha: Date | string | null | undefined;
   titulo: string;
+  /**
+   * Clave `YYYY-MM` elegida explícitamente para archivar el PDF. Si no se
+   * indica (o no es válida), se deriva de `fecha`.
+   */
+  anyoMes?: string | null;
 }): Promise<ActaPdfPersistResult> {
   const raw = (args.pdfDataUrl ?? "").trim();
   if (!raw.startsWith("data:application/pdf")) {
@@ -100,7 +160,7 @@ export async function persistActaPdf(args: {
     throw new Error(`El PDF supera el tamaño máximo de ${MAX_BYTES / (1024 * 1024)} MB.`);
   }
 
-  const anyoMes = anyoMesDe(args.fecha);
+  const anyoMes = normalizarAnyoMes(args.anyoMes) ?? anyoMesDe(args.fecha);
   const [anyo, mes] = anyoMes.split("-");
   const slug = actaSlug(args.titulo);
   const baseName = `${anyoMes}-${slug}`;

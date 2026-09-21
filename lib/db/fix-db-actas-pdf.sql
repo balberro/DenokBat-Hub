@@ -1,17 +1,14 @@
--- Acta firmada en PDF: ruta y metadatos del archivo guardado al firmar.
--- Convivencia con db_actas: solo se persisten datos del PDF cuando el acta
--- pasa a estado 'firmada' (o cuando un contable/directivo lo adjunta a un
--- acta ya firmada). Idempotente; ejecutar como owner o superuser.
+-- [DEPRECADO] El PDF firmado ya no vive en columnas de db_actas.
+--
+-- El PDF firmado (documento externo) se guarda ahora en la tabla `db_actas_pdf`
+-- (relación 1:1 con el acta). Ver `fix-db-actas-aceptada.sql`, que crea la tabla
+-- y migra los datos desde las antiguas columnas `db_actas.pdf_*`.
+--
+-- Este fichero se conserva por compatibilidad: si alguna base de datos antigua
+-- llegó a ejecutarlo, ya tendrá las columnas `pdf_*` en db_actas. La migración
+-- `fix-db-actas-aceptada.sql` copia esos valores a `db_actas_pdf`.
+--
+-- Idempotente; ejecutar como owner / superusuario.
 
-ALTER TABLE db_actas
-  ADD COLUMN IF NOT EXISTS pdf_url        TEXT,
-  ADD COLUMN IF NOT EXISTS pdf_filename   TEXT,
-  ADD COLUMN IF NOT EXISTS pdf_anyo_mes   VARCHAR(7),
-  ADD COLUMN IF NOT EXISTS pdf_size       INTEGER,
-  ADD COLUMN IF NOT EXISTS pdf_subido_en  TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS pdf_subido_por INTEGER;
+COMMENT ON TABLE db_actas IS 'Actas de la app. Estados: borrador | completa | aceptada.';
 
--- Índice para listar/buscar por año-mes (carpeta del archivo).
-CREATE INDEX IF NOT EXISTS db_actas_pdf_anyo_mes_idx
-  ON db_actas (pdf_anyo_mes)
-  WHERE pdf_anyo_mes IS NOT NULL;

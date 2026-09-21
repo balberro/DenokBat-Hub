@@ -8,7 +8,12 @@ import { z } from "zod/v4";
  * - Roles: contable escribe, directivo lee.
  * - Origen: una convocatoria. El acta copia sus puntos para preservar el
  *   contenido debatido aunque después cambie la convocatoria.
- * - Estados: `borrador` -> `completa` -> `firmada`.
+ * - Estados: `borrador` -> `completa` -> `aceptada`.
+ *   - `borrador`: en redacción.
+ *   - `completa`: lista para firma. El proceso de firma es externo y puede
+ *     tardar; el acta permanece accesible durante ese tiempo.
+ *   - `aceptada`: se ha subido el PDF firmado (documento externo). El PDF vive
+ *     en la tabla `db_actas_pdf` (relación 1:1, ver `actasPdf.ts`).
  * - Cada punto puede recoger acuerdo, resultado de propuesta y acción prevista
  *   sobre expediente (`abrir`, `continuar`, `cerrar`).
  *
@@ -20,28 +25,13 @@ export const actasTable = pgTable("db_actas", {
   convocatoriaId: integer("convocatoria_id"),
   titulo: varchar("titulo", { length: 500 }).notNull(),
   fecha: date("fecha"),
-  /** borrador | completa | firmada */
+  /** borrador | completa | aceptada */
   estado: varchar("estado", { length: 30 }).default("borrador").notNull(),
   asistentes: text("asistentes"),
   resumen: text("resumen"),
   observaciones: text("observaciones"),
   completadaEn: timestamp("completada_en", { withTimezone: true }),
   firmadaEn: timestamp("firmada_en", { withTimezone: true }),
-  /**
-   * Archivo PDF del acta firmada (subida manual).
-   *
-   * - `pdf_url`: ruta pública servida bajo `/uploads/actas/...`.
-   * - `pdf_filename`: nombre amigable usado al descargar
-   *   (formato `YYYY-MM-<slug-titulo>[-N].pdf`).
-   * - `pdf_anyo_mes`: clave `YYYY-MM` que facilita el listado por mes y la
-   *   detección de duplicados al firmar otra acta del mismo mes.
-   */
-  pdfUrl: text("pdf_url"),
-  pdfFilename: text("pdf_filename"),
-  pdfAnyoMes: varchar("pdf_anyo_mes", { length: 7 }),
-  pdfSize: integer("pdf_size"),
-  pdfSubidoEn: timestamp("pdf_subido_en", { withTimezone: true }),
-  pdfSubidoPor: integer("pdf_subido_por"),
   creadoEn: timestamp("creado_en", { withTimezone: true }).defaultNow().notNull(),
   actualizadoEn: timestamp("actualizado_en", { withTimezone: true }).defaultNow().notNull(),
   creadoPor: integer("creado_por"),
@@ -82,8 +72,19 @@ export const insertActaPuntoSchema = createInsertSchema(actaPuntosTable).omit({
 export type InsertActaPunto = z.infer<typeof insertActaPuntoSchema>;
 export type ActaPunto = typeof actaPuntosTable.$inferSelect;
 
-export const ACTA_ESTADOS = ["borrador", "completa", "firmada"] as const;
+/**
+ * Estados del acta.
+ *
+ * - `borrador` / `completa` / `aceptada` son los estados vigentes del flujo.
+ * - `firmada` se conserva como **estado legado**: era el antiguo "tiene PDF
+ *   firmado subido", que ahora es `aceptada`. Se trata como equivalente a
+ *   `aceptada` en toda la lógica de "acta con PDF firmado".
+ */
+export const ACTA_ESTADOS = ["borrador", "completa", "aceptada", "firmada"] as const;
 export type ActaEstado = (typeof ACTA_ESTADOS)[number];
+
+/** Estados en los que el acta ya tiene el PDF firmado subido (documento externo). */
+export const ACTA_ESTADOS_CON_PDF = ["aceptada", "firmada"] as const;
 
 export const ACTA_RESULTADOS_PROPUESTA = [
   "rechazada",
@@ -95,3 +96,4 @@ export type ActaResultadoPropuesta = (typeof ACTA_RESULTADOS_PROPUESTA)[number];
 
 export const ACTA_EXPEDIENTE_ACCIONES = ["abrir", "continuar", "cerrar"] as const;
 export type ActaExpedienteAccion = (typeof ACTA_EXPEDIENTE_ACCIONES)[number];
+

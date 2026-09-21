@@ -10,6 +10,7 @@ export * from "./sugerencias";
 export * from "./propuestasJunta";
 export * from "./convocatorias";
 export * from "./actas";
+export * from "./actasPdf";
 export * from "./actaEnvios";
 export * from "./expedientes";
 export * from "./expedienteAcciones";
@@ -17,3 +18,4 @@ export * from "./config";
 export * from "./cargos";
 export * from "./estatutos";
 export * from "./actas_asamblea";
+

@@ -10,7 +10,13 @@ import {
 } from "@workspace/db/schema";
 import { requireAuth } from "../middlewares/auth";
 import { sendActaEmail } from "../lib/mailActas";
-import { persistActaPdf, anyoMesDe } from "../lib/actaPdf";
+import {
+  persistActaPdf,
+  anyoMesDe,
+  normalizarAnyoMes,
+  tituloActaAnyoMes,
+  primerDiaAnyoMes,
+} from "../lib/actaPdf";
 
 const router: IRouter = Router();
 
@@ -28,7 +34,7 @@ function puedeLeer(user: { role?: string; roles?: string[] }): boolean {
 }
 /**
  * Lectura ampliada del gestor de actas: directivo, contable y **delegado**.
- * El delegado solo puede ver actas en estado `completa` o `firmada`; los
+ * El delegado solo puede ver actas en estado `completa` o `aceptada`; los
  * borradores quedan restringidos al equipo redactor (directivo/contable).
  */
 function puedeLeerExtendida(user: { role?: string; roles?: string[] }): boolean {
@@ -48,6 +54,51 @@ function isResultado(s: string): s is ActaResultadoPropuesta {
 }
 function isExpedienteAccion(s: string): s is ActaExpedienteAccion {
   return (ACTA_EXPEDIENTE_ACCIONES as readonly string[]).includes(s);
+}
+
+/**
+ * Error de esquema de la base de datos de actas.
+ *
+ * Se lanza cuando el usuario de la aplicación no puede crear/actualizar el
+ * esquema de `db_actas` (típicamente porque no es el *owner* de la tabla y las
+ * sentencias `CREATE TABLE`/`ALTER TABLE` fallan con "must be owner of table").
+ *
+ * Lleva `sqlHint` con el comando exacto que hay que ejecutar (como owner /
+ * superusuario) para arreglarlo, de modo que el mensaje de error que llega al
+ * usuario sea directamente accionable.
+ */
+class EsquemaActasError extends Error {
+  readonly code: "ESQUEMA_ACTAS";
+  readonly sqlHint: string;
+  readonly causa: string;
+
+  constructor(message: string, opts: { sqlHint: string; causa: string }) {
+    super(message);
+    this.name = "EsquemaActasError";
+    this.code = "ESQUEMA_ACTAS";
+    this.sqlHint = opts.sqlHint;
+    this.causa = opts.causa;
+  }
+}
+
+const SQL_HINT_ACTAS = [
+  "-- Ejecutar como OWNER (p. ej. postgres) contra la base de datos de la app:",
+  '--   psql "$DATABASE_URL_OWNER" -d <base_de_datos> -f lib/db/fix-db-actas.sql',
+  "--   psql \"$DATABASE_URL_OWNER\" -d <base_de_datos> -f lib/db/fix-db-actas-aceptada.sql",
+  "-- O bien dar permisos al usuario de la app sobre las tablas:",
+  "--   ALTER TABLE db_actas OWNER TO <usuario_app>;",
+  "--   GRANT ALL ON db_actas, db_acta_puntos, db_actas_pdf TO <usuario_app>;",
+  "--   GRANT ALL ON SEQUENCE db_actas_numero_seq TO <usuario_app>;",
+].join("\n");
+
+/** Normaliza el error crudo de PostgreSQL a texto útil para el usuario. */
+function describirErrorPg(e: unknown): string {
+  const err = e as { code?: string; message?: string; detail?: string; routine?: string };
+  const parts: string[] = [];
+  if (err?.code) parts.push(`código ${err.code}`);
+  if (err?.message) parts.push(err.message);
+  if (err?.detail) parts.push(err.detail);
+  return parts.join(" · ") || String(e);
 }
 
 async function ensureActasSchema(): Promise<void> {
@@ -97,24 +148,96 @@ async function ensureActasSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS db_acta_puntos_acta_idx
         ON db_acta_puntos (acta_id, orden, id)
     `);
-    // Columnas para el PDF firmado del acta (`fix-db-actas-pdf.sql`).
+    // PDF firmado del acta en tabla aparte (relación 1:1), ver
+    // `lib/db/fix-db-actas-aceptada.sql`.
     await pool.query(`
-      ALTER TABLE db_actas
-        ADD COLUMN IF NOT EXISTS pdf_url        TEXT,
-        ADD COLUMN IF NOT EXISTS pdf_filename   TEXT,
-        ADD COLUMN IF NOT EXISTS pdf_anyo_mes   VARCHAR(7),
-        ADD COLUMN IF NOT EXISTS pdf_size       INTEGER,
-        ADD COLUMN IF NOT EXISTS pdf_subido_en  TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS pdf_subido_por INTEGER
+      CREATE TABLE IF NOT EXISTS db_actas_pdf (
+        id              SERIAL PRIMARY KEY,
+        acta_id         INTEGER NOT NULL,
+        pdf_url         TEXT NOT NULL,
+        pdf_filename    TEXT,
+        pdf_anyo_mes    VARCHAR(7),
+        pdf_size        INTEGER,
+        subido_en       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        subido_por      INTEGER,
+        creado_en       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    // Relación 1:1 (un único PDF por acta). Nombre de constraint idéntico al
+    // de `lib/db/fix-db-actas-aceptada.sql` para no duplicar índices únicos.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'db_actas_pdf_acta_uq'
+            AND conrelid = 'db_actas_pdf'::regclass
+        ) THEN
+          ALTER TABLE db_actas_pdf
+            ADD CONSTRAINT db_actas_pdf_acta_uq UNIQUE (acta_id);
+        END IF;
+      END $$;
     `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS db_actas_pdf_anyo_mes_idx
-        ON db_actas (pdf_anyo_mes)
+        ON db_actas_pdf (pdf_anyo_mes)
         WHERE pdf_anyo_mes IS NOT NULL
     `);
+    // Normalizar el estado legado 'firmada' → 'aceptada' y asegurar el CHECK.
+    await pool.query(`UPDATE db_actas SET estado = 'aceptada' WHERE estado = 'firmada'`);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'db_actas_estado_chk'
+            AND conrelid = 'db_actas'::regclass
+        ) THEN
+          ALTER TABLE db_actas DROP CONSTRAINT db_actas_estado_chk;
+        END IF;
+        ALTER TABLE db_actas
+          ADD CONSTRAINT db_actas_estado_chk
+          CHECK (estado IN ('borrador', 'completa', 'aceptada'));
+      END $$;
+    `);
   } catch (e) {
-    console.warn("[ensureActasSchema]", e);
+    // No nos tragamos el error: lo convertimos en uno claro y accionable para
+    // que el usuario sepa exactamente qué ejecutar.
+    const causa = describirErrorPg(e);
+    console.error("[ensureActasSchema] Fallo preparando el esquema de actas:", causa);
+    throw new EsquemaActasError(
+      [
+        "No se pudo preparar el esquema de la base de datos de actas (falta una",
+        "columna o el usuario de la aplicación no es propietario de la tabla).",
+        `Causa: ${causa}`,
+      ].join(" "),
+      { sqlHint: SQL_HINT_ACTAS, causa },
+    );
   }
+}
+
+/**
+ * Envía al cliente un error claro de esquema (503) y devuelve `true` si el
+ * error recibido es de este tipo (esquema de actas). Pensado para usarse en el
+ * `catch` de cada endpoint: si es un `EsquemaActasError` responde con detalle
+ * accionable y señala que ya se ha gestionado.
+ */
+function responderErrorEsquema(res: import("express").Response, err: unknown): boolean {
+  if (err instanceof EsquemaActasError) {
+    res.status(503).json({
+      error:
+        "La base de datos de actas no está lista (falta una migración de esquema " +
+        "o permisos). Revisa el detalle y ejecuta el SQL indicado como propietario " +
+        "de la base de datos.",
+      codigo: err.code,
+      detalle: err.message,
+      causa: err.causa,
+      solucion_sql: err.sqlHint,
+    });
+    return true;
+  }
+  return false;
 }
 
 function mapActa(row: Record<string, unknown>) {
@@ -130,12 +253,13 @@ function mapActa(row: Record<string, unknown>) {
     observaciones: row.observaciones,
     completada_en: row.completada_en,
     firmada_en: row.firmada_en,
-    pdf_url: row.pdf_url ?? null,
-    pdf_filename: row.pdf_filename ?? null,
-    pdf_anyo_mes: row.pdf_anyo_mes ?? null,
-    pdf_size: row.pdf_size ?? null,
-    pdf_subido_en: row.pdf_subido_en ?? null,
-    pdf_subido_por: row.pdf_subido_por ?? null,
+    // El PDF firmado vive en `db_actas_pdf`; se expone como `pdf_*` en la API.
+    pdf_url: row.pdf_pdf_url ?? null,
+    pdf_filename: row.pdf_pdf_filename ?? null,
+    pdf_anyo_mes: row.pdf_pdf_anyo_mes ?? null,
+    pdf_size: row.pdf_pdf_size ?? null,
+    pdf_subido_en: row.pdf_pdf_subido_en ?? null,
+    pdf_subido_por: row.pdf_pdf_subido_por ?? null,
     creado_en: row.creado_en,
     actualizado_en: row.actualizado_en,
     creado_por: row.creado_por,
@@ -204,20 +328,25 @@ router.get("/admin/actas", requireAuth, async (req, res): Promise<void> => {
     }
     // El delegado nunca ve borradores.
     if (!esRedactor(user)) {
-      filters.push(`a.estado IN ('completa','firmada')`);
+      filters.push(`a.estado IN ('completa','aceptada')`);
     }
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
     const rows = await pool.query(
       `SELECT a.*, c.numero AS conv_numero, c.titulo AS conv_titulo,
-              c.tipo AS conv_tipo, c.fecha AS conv_fecha, c.hora AS conv_hora, c.lugar AS conv_lugar
+              c.tipo AS conv_tipo, c.fecha AS conv_fecha, c.hora AS conv_hora, c.lugar AS conv_lugar,
+              p.pdf_url AS pdf_pdf_url, p.pdf_filename AS pdf_pdf_filename,
+              p.pdf_anyo_mes AS pdf_pdf_anyo_mes, p.pdf_size AS pdf_pdf_size,
+              p.subido_en AS pdf_pdf_subido_en, p.subido_por AS pdf_pdf_subido_por
          FROM db_actas a
          LEFT JOIN db_convocatorias c ON c.id = a.convocatoria_id
+         LEFT JOIN db_actas_pdf p ON p.acta_id = a.id
          ${where}
         ORDER BY a.fecha DESC NULLS LAST, a.creado_en DESC`,
       params,
     );
     res.json({ items: rows.rows.map(mapActa), total: rows.rowCount ?? rows.rows.length });
   } catch (err) {
+    if (responderErrorEsquema(res, err)) return;
     console.error("[GET /admin/actas]", err);
     res.status(500).json({ error: "Error consultando actas", detalle: String(err) });
   }
@@ -265,9 +394,13 @@ router.get("/admin/actas/:id", requireAuth, async (req, res): Promise<void> => {
     await ensureActasSchema();
     const actaRes = await pool.query(
       `SELECT a.*, c.numero AS conv_numero, c.titulo AS conv_titulo,
-              c.tipo AS conv_tipo, c.fecha AS conv_fecha, c.hora AS conv_hora, c.lugar AS conv_lugar
+              c.tipo AS conv_tipo, c.fecha AS conv_fecha, c.hora AS conv_hora, c.lugar AS conv_lugar,
+              p.pdf_url AS pdf_pdf_url, p.pdf_filename AS pdf_pdf_filename,
+              p.pdf_anyo_mes AS pdf_pdf_anyo_mes, p.pdf_size AS pdf_pdf_size,
+              p.subido_en AS pdf_pdf_subido_en, p.subido_por AS pdf_pdf_subido_por
          FROM db_actas a
          LEFT JOIN db_convocatorias c ON c.id = a.convocatoria_id
+         LEFT JOIN db_actas_pdf p ON p.acta_id = a.id
         WHERE a.id = $1`,
       [id],
     );
@@ -366,15 +499,27 @@ router.post(
       const resumen = String(req.body?.resumen ?? "").trim() || null;
       const observaciones = String(req.body?.observaciones ?? "").trim() || null;
 
+      // El usuario puede crear el acta directamente en borrador (por defecto) o
+      // ya como completa (se resolverán las propuestas al final, igual que en
+      // POST /admin/actas/:id/completar).
+      const estadoSolicitado = String(req.body?.estado ?? "borrador").trim();
+      if (estadoSolicitado !== "borrador" && estadoSolicitado !== "completa") {
+        await client.query("ROLLBACK");
+        res.status(400).json({ error: "estado debe ser 'borrador' o 'completa'" });
+        return;
+      }
+      const crearComoCompleta = estadoSolicitado === "completa";
+
       const actaRes = await client.query(
         `INSERT INTO db_actas
            (numero, convocatoria_id, titulo, fecha, estado, asistentes, resumen, observaciones, creado_por)
-         VALUES (nextval('db_actas_numero_seq')::int, $1, $2, $3::date, 'borrador', $4, $5, $6, $7)
+         VALUES (nextval('db_actas_numero_seq')::int, $1, $2, $3::date, $4, $5, $6, $7, $8)
          RETURNING *`,
         [
           convocatoriaId,
           titulo,
           fecha,
+          estadoSolicitado,
           asistentes,
           resumen,
           observaciones,
@@ -468,6 +613,97 @@ router.post(
         );
       }
 
+      // Si se creó directamente como "completa", resolver las propuestas de los
+      // puntos con resultado (misma lógica que POST /admin/actas/:id/completar).
+      if (crearComoCompleta) {
+        const puntosRes = await client.query(
+          `SELECT * FROM db_acta_puntos WHERE acta_id = $1 ORDER BY orden, id FOR UPDATE`,
+          [actaId],
+        );
+        const ahora = new Date();
+        for (const punto of puntosRes.rows as Record<string, unknown>[]) {
+          if (punto.propuesta_id == null || punto.resultado_propuesta == null) continue;
+          const propuestaId = Number(punto.propuesta_id);
+          const resultado = String(punto.resultado_propuesta);
+          const propRes = await client.query(
+            "SELECT * FROM db_propuestas_junta WHERE id = $1 FOR UPDATE",
+            [propuestaId],
+          );
+          if (propRes.rowCount === 0) continue;
+          const prop = propRes.rows[0] as Record<string, unknown>;
+          const expedienteResultadoRaw =
+            prop.origen_tipo === "subvencion" && prop.origen_id != null
+              ? Number(prop.origen_id)
+              : Number(punto.expediente_id);
+          const expedienteResultadoId = Number.isFinite(expedienteResultadoRaw)
+            ? expedienteResultadoRaw
+            : null;
+          const resultadoGestionaExpediente =
+            resultado === "expediente_abierto" || resultado === "expediente_cerrado";
+
+          await client.query(
+            `UPDATE db_propuestas_junta
+                SET estado_buzon = 'resuelta',
+                    resultado = $1,
+                    resuelta_en = $2,
+                    actualizado_en = $2,
+                    expediente_id = CASE WHEN $3::boolean THEN COALESCE($4, expediente_id) ELSE expediente_id END,
+                    observaciones = COALESCE($5, observaciones)
+              WHERE id = $6`,
+            [
+              resultado,
+              ahora,
+              resultadoGestionaExpediente,
+              expedienteResultadoId,
+              punto.acuerdo ? String(punto.acuerdo) : null,
+              propuestaId,
+            ],
+          );
+
+          let nuevoEstadoSugerencia: "rechazada" | "aportaciones" | "planificada" | null = null;
+          if (resultado === "rechazada") nuevoEstadoSugerencia = "rechazada";
+          if (resultado === "mas_aportaciones") nuevoEstadoSugerencia = "aportaciones";
+          if (resultado === "expediente_abierto") nuevoEstadoSugerencia = "planificada";
+
+          if (
+            prop.origen_tipo === "sugerencia" &&
+            prop.origen_id != null &&
+            nuevoEstadoSugerencia != null
+          ) {
+            const sugId = Number(prop.origen_id);
+            if (Number.isFinite(sugId)) {
+              await client.query(
+                `UPDATE db_sugerencias
+                    SET estado = $1,
+                        expediente_id = CASE WHEN $2::boolean THEN COALESCE($3, expediente_id) ELSE expediente_id END,
+                        updated_at = $4
+                  WHERE id = $5`,
+                [
+                  nuevoEstadoSugerencia,
+                  resultado === "expediente_abierto",
+                  expedienteResultadoId,
+                  ahora,
+                  sugId,
+                ],
+              );
+              await client.query(
+                "UPDATE db_sugerencias SET estado = $1, updated_at = $2 WHERE parent_id = $3",
+                [nuevoEstadoSugerencia, ahora, sugId],
+              );
+            }
+          }
+        }
+        await client.query(
+          `UPDATE db_actas
+              SET completada_en = $1,
+                  actualizado_en = $1
+            WHERE id = $2`,
+          [ahora, actaId],
+        );
+        acta.estado = "completa";
+        acta.completada_en = ahora;
+      }
+
       await client.query("COMMIT");
       res.status(201).json({ ok: true, acta });
     } catch (err) {
@@ -476,6 +712,7 @@ router.post(
       } catch {
         //
       }
+      if (responderErrorEsquema(res, err)) return;
       console.error("[POST /admin/actas/desde-convocatoria]", err);
       res.status(500).json({ error: "Error creando acta", detalle: String(err) });
     } finally {
@@ -503,13 +740,25 @@ router.put("/admin/actas/:id", requireAuth, async (req, res): Promise<void> => {
       res.status(404).json({ error: "Acta no encontrada" });
       return;
     }
-    if (current.rows[0].estado !== "borrador") {
-      res.status(409).json({ error: "Solo se puede editar un acta en borrador" });
+    // Se puede editar la cabecera tanto en borrador como en completa. Las actas
+    // firmadas son inmutables (su contenido va ligado al PDF firmado).
+    const estadoActual = String(current.rows[0].estado);
+    if (estadoActual !== "borrador" && estadoActual !== "completa") {
+      res
+        .status(409)
+        .json({ error: "Solo se puede editar un acta en borrador o completa" });
       return;
     }
     const titulo = String(body.titulo ?? "").trim();
     if (body.titulo !== undefined && titulo.length < 2) {
       res.status(400).json({ error: "El título es obligatorio" });
+      return;
+    }
+    // Cambio de estado permitido al guardar la cabecera: solo entre borrador y
+    // completa (firmada se gestiona con su propio endpoint y subida de PDF).
+    const estadoRaw = body.estado !== undefined ? String(body.estado).trim() : null;
+    if (estadoRaw !== null && estadoRaw !== "borrador" && estadoRaw !== "completa") {
+      res.status(400).json({ error: "estado debe ser 'borrador' o 'completa'" });
       return;
     }
     await pool.query(
@@ -519,8 +768,13 @@ router.put("/admin/actas/:id", requireAuth, async (req, res): Promise<void> => {
               asistentes = CASE WHEN $5::boolean THEN $6 ELSE asistentes END,
               resumen = CASE WHEN $7::boolean THEN $8 ELSE resumen END,
               observaciones = CASE WHEN $9::boolean THEN $10 ELSE observaciones END,
+              estado = CASE WHEN $11::boolean THEN $12 ELSE estado END,
+              completada_en = CASE
+                                WHEN $11::boolean AND $12 = 'completa' THEN COALESCE(completada_en, now())
+                                ELSE completada_en
+                              END,
               actualizado_en = now()
-        WHERE id = $11`,
+        WHERE id = $13`,
       [
         body.titulo !== undefined,
         titulo,
@@ -532,12 +786,15 @@ router.put("/admin/actas/:id", requireAuth, async (req, res): Promise<void> => {
         String(body.resumen ?? "").trim() || null,
         body.observaciones !== undefined,
         String(body.observaciones ?? "").trim() || null,
+        estadoRaw !== null,
+        estadoRaw,
         id,
       ],
     );
     const updated = await pool.query("SELECT * FROM db_actas WHERE id = $1", [id]);
     res.json(mapActa(updated.rows[0]));
   } catch (err) {
+    if (responderErrorEsquema(res, err)) return;
     console.error("[PUT /admin/actas/:id]", err);
     res.status(500).json({ error: "Error actualizando acta", detalle: String(err) });
   }
@@ -623,6 +880,7 @@ router.put(
       await pool.query("UPDATE db_actas SET actualizado_en = now() WHERE id = $1", [id]);
       res.json({ ok: true });
     } catch (err) {
+      if (responderErrorEsquema(res, err)) return;
       console.error("[PUT /admin/actas/:id/puntos/:puntoId]", err);
       res.status(500).json({ error: "Error actualizando punto", detalle: String(err) });
     }
@@ -866,6 +1124,7 @@ router.post("/admin/actas/:id/completar", requireAuth, async (req, res): Promise
     } catch {
       //
     }
+    if (responderErrorEsquema(res, err)) return;
     console.error("[POST /admin/actas/:id/completar]", err);
     res.status(500).json({ error: "Error completando acta", detalle: String(err) });
   } finally {
@@ -1023,7 +1282,7 @@ function renderActaHtml(args: {
   };
   const par = (v: unknown) => esc(v).replace(/\n/g, "<br/>");
   const banner =
-    acta.estado !== "firmada"
+    acta.estado !== "aceptada"
       ? `<div style="border:2px solid #b91c1c;color:#b91c1c;padding:6px 10px;display:inline-block;margin-bottom:12px;font-weight:bold;letter-spacing:0.1em;">BORRADOR — ${esc(acta.estado)}</div>`
       : "";
   const head =
@@ -1091,7 +1350,7 @@ function renderActaTexto(args: {
 }): string {
   const { acta, puntos, mensaje } = args;
   const lines: string[] = [];
-  if (acta.estado !== "firmada") {
+  if (acta.estado !== "aceptada") {
     lines.push(`*** BORRADOR — estado: ${acta.estado} ***`);
     lines.push("");
   }
@@ -1172,9 +1431,9 @@ router.post("/admin/actas/:id/enviar-email", requireAuth, async (req, res): Prom
       return;
     }
     const acta = actaRes.rows[0] as Record<string, unknown>;
-    if (acta.estado !== "firmada") {
+    if (acta.estado !== "aceptada") {
       res.status(409).json({
-        error: "Solo se puede enviar por email un acta firmada.",
+        error: "Solo se puede enviar por email un acta firmada (aceptada).",
         estado: acta.estado,
       });
       return;
@@ -1267,14 +1526,54 @@ router.get("/actas-firmadas", requireAuth, async (req, res): Promise<void> => {
   }
   try {
     await ensureActasSchema();
+    const filters: string[] = [`a.estado = 'aceptada'`];
+    const params: unknown[] = [];
+
+    // Filtro por año de archivo (p.pdf_anyo_mes, YYYY-MM).
+    const anio = String(req.query.anio ?? "").trim();
+    if (/^\d{4}$/.test(anio)) {
+      params.push(`${anio}-%`);
+      filters.push(`p.pdf_anyo_mes LIKE $${params.length}`);
+    }
+
+    // Filtro por año-mes completo (YYYY-MM).
+    const anyoMes = normalizarAnyoMes(req.query.anyo_mes ?? req.query.anyoMes);
+    if (anyoMes) {
+      params.push(anyoMes);
+      filters.push(`p.pdf_anyo_mes = $${params.length}`);
+    }
+
+    // Filtro por tema/texto: título del acta o contenido de los puntos
+    // (título, descripción o acuerdo), case-insensitive.
+    const q = String(req.query.q ?? "").trim();
+    if (q.length > 0) {
+      params.push(`%${q}%`);
+      const p = params.length;
+      filters.push(`(
+        a.titulo ILIKE $${p}
+        OR EXISTS (
+          SELECT 1 FROM db_acta_puntos ap
+           WHERE ap.acta_id = a.id
+             AND (
+               COALESCE(ap.titulo, '') ILIKE $${p}
+               OR COALESCE(ap.descripcion, '') ILIKE $${p}
+               OR COALESCE(ap.acuerdo, '') ILIKE $${p}
+             )
+        )
+      )`);
+    }
+
+    const where = `WHERE ${filters.join(" AND ")}`;
     const rows = await pool.query(
       `SELECT a.id, a.numero, a.titulo, a.fecha, a.firmada_en,
-              a.pdf_url, a.pdf_filename, a.pdf_anyo_mes,
+              p.pdf_url, p.pdf_filename, p.pdf_anyo_mes,
               c.numero AS conv_numero, c.titulo AS conv_titulo, c.tipo AS conv_tipo
          FROM db_actas a
          LEFT JOIN db_convocatorias c ON c.id = a.convocatoria_id
-        WHERE a.estado = 'firmada'
+         LEFT JOIN db_actas_pdf p ON p.acta_id = a.id
+        ${where}
         ORDER BY a.fecha DESC NULLS LAST, a.firmada_en DESC NULLS LAST`,
+      params,
     );
     res.json({ items: rows.rows, total: rows.rowCount ?? rows.rows.length });
   } catch (err) {
@@ -1298,10 +1597,14 @@ router.get("/actas-firmadas/:id", requireAuth, async (req, res): Promise<void> =
     await ensureActasSchema();
     const actaRes = await pool.query(
       `SELECT a.*, c.numero AS conv_numero, c.titulo AS conv_titulo,
-              c.tipo AS conv_tipo, c.fecha AS conv_fecha, c.hora AS conv_hora, c.lugar AS conv_lugar
+              c.tipo AS conv_tipo, c.fecha AS conv_fecha, c.hora AS conv_hora, c.lugar AS conv_lugar,
+              p.pdf_url AS pdf_pdf_url, p.pdf_filename AS pdf_pdf_filename,
+              p.pdf_anyo_mes AS pdf_pdf_anyo_mes, p.pdf_size AS pdf_pdf_size,
+              p.subido_en AS pdf_pdf_subido_en, p.subido_por AS pdf_pdf_subido_por
          FROM db_actas a
          LEFT JOIN db_convocatorias c ON c.id = a.convocatoria_id
-        WHERE a.id = $1 AND a.estado = 'firmada'`,
+         LEFT JOIN db_actas_pdf p ON p.acta_id = a.id
+        WHERE a.id = $1 AND a.estado = 'aceptada'`,
       [id],
     );
     if (actaRes.rowCount === 0) {
@@ -1362,14 +1665,17 @@ router.get(
         res.status(404).json({ error: "Acta no encontrada" });
         return;
       }
-      const anyoMes = anyoMesDe(current.rows[0].fecha as string | null);
+      const anyoMes =
+        normalizarAnyoMes(req.query.anyo_mes) ??
+        anyoMesDe(current.rows[0].fecha as string | null);
       const rows = await pool.query(
-        `SELECT id, numero, titulo, fecha, pdf_filename, pdf_url
-           FROM db_actas
-          WHERE estado = 'firmada'
-            AND pdf_anyo_mes = $1
-            AND id <> $2
-          ORDER BY fecha DESC NULLS LAST, firmada_en DESC NULLS LAST`,
+        `SELECT a.id, a.numero, a.titulo, a.fecha, p.pdf_filename, p.pdf_url
+           FROM db_actas a
+           JOIN db_actas_pdf p ON p.acta_id = a.id
+          WHERE a.estado = 'aceptada'
+            AND p.pdf_anyo_mes = $1
+            AND a.id <> $2
+          ORDER BY a.fecha DESC NULLS LAST, a.firmada_en DESC NULLS LAST`,
         [anyoMes, id],
       );
       res.json({
@@ -1427,39 +1733,62 @@ router.post("/admin/actas/:id/firmar", requireAuth, async (req, res): Promise<vo
       res.status(409).json({ error: "Solo se puede firmar un acta completa" });
       return;
     }
+    // Año-mes de archivo: opcional. Si el cliente lo envía debe ser válido
+    // (`YYYY-MM`); si no, se deriva de la fecha del acta.
+    const anyoMesBodyRaw =
+      body.anyo_mes !== undefined && body.anyo_mes !== null && String(body.anyo_mes).trim() !== ""
+        ? String(body.anyo_mes).trim()
+        : null;
+    const anyoMesBody = normalizarAnyoMes(anyoMesBodyRaw);
+    if (anyoMesBodyRaw && !anyoMesBody) {
+      res.status(400).json({ error: "anyo_mes debe tener el formato YYYY-MM." });
+      return;
+    }
     let persisted;
     try {
       persisted = await persistActaPdf({
         pdfDataUrl,
         fecha: cur.fecha as string | null,
         titulo: String(cur.titulo ?? ""),
+        anyoMes: anyoMesBody,
       });
     } catch (e) {
       res.status(400).json({ error: String((e as Error).message ?? e) });
       return;
     }
     const duplicados = await pool.query(
-      `SELECT id, numero, titulo, fecha, pdf_filename, pdf_url
-         FROM db_actas
-        WHERE estado = 'firmada'
-          AND pdf_anyo_mes = $1
-          AND id <> $2
-        ORDER BY fecha DESC NULLS LAST, firmada_en DESC NULLS LAST`,
+      `SELECT a.id, a.numero, a.titulo, a.fecha, p.pdf_filename, p.pdf_url
+         FROM db_actas a
+         JOIN db_actas_pdf p ON p.acta_id = a.id
+        WHERE a.estado = 'aceptada'
+          AND p.pdf_anyo_mes = $1
+          AND a.id <> $2
+        ORDER BY a.fecha DESC NULLS LAST, a.firmada_en DESC NULLS LAST`,
       [persisted.anyoMes, id],
     );
 
+    // El acta pasa a 'aceptada' (tiene PDF firmado) y el PDF se archiva en
+    // `db_actas_pdf` (relación 1:1, upsert por si se re-firma).
     await pool.query(
       `UPDATE db_actas
-          SET estado = 'firmada',
+          SET estado = 'aceptada',
               firmada_en = now(),
-              actualizado_en = now(),
-              pdf_url = $2,
-              pdf_filename = $3,
-              pdf_anyo_mes = $4,
-              pdf_size = $5,
-              pdf_subido_en = now(),
-              pdf_subido_por = $6
+              actualizado_en = now()
         WHERE id = $1`,
+      [id],
+    );
+    await pool.query(
+      `INSERT INTO db_actas_pdf
+         (acta_id, pdf_url, pdf_filename, pdf_anyo_mes, pdf_size, subido_en, subido_por)
+       VALUES ($1, $2, $3, $4, $5, now(), $6)
+       ON CONFLICT (acta_id) DO UPDATE
+         SET pdf_url = EXCLUDED.pdf_url,
+             pdf_filename = EXCLUDED.pdf_filename,
+             pdf_anyo_mes = EXCLUDED.pdf_anyo_mes,
+             pdf_size = EXCLUDED.pdf_size,
+             subido_en = now(),
+             subido_por = EXCLUDED.subido_por,
+             actualizado_en = now()`,
       [
         id,
         persisted.url,
@@ -1479,8 +1808,120 @@ router.post("/admin/actas/:id/firmar", requireAuth, async (req, res): Promise<vo
       duplicados_mes: duplicados.rows,
     });
   } catch (err) {
+    if (responderErrorEsquema(res, err)) return;
     console.error("[POST /admin/actas/:id/firmar]", err);
     res.status(500).json({ error: "Error firmando acta", detalle: String(err) });
+  }
+});
+
+/**
+ * Archivar un PDF firmado creando el acta completa de otro año-mes.
+ *
+ * Caso de uso: el PDF firmado pertenece a un acta que no está en el listado
+ * (de otro año-mes) o que se elabora aquí mismo. Se crea el acta con el título
+ * `Acta: Mes de "<mes>" de <año>` en estado `aceptada`, sin pasarla por el
+ * flujo borrador → completa, y se archiva el PDF en `uploads/actas/YYYY/MM/`.
+ *
+ * Body: { anyo_mes: 'YYYY-MM', pdf_data_url, titulo? }
+ */
+router.post("/admin/actas/firmar-otro-mes", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  if (!puedeEscribir(user)) {
+    res.status(403).json({ error: "No autorizado" });
+    return;
+  }
+  const body = req.body ?? {};
+  const anyoMes = normalizarAnyoMes(body.anyo_mes ?? body.anyoMes);
+  if (!anyoMes) {
+    res.status(400).json({ error: "Indica un año-mes válido (formato YYYY-MM)." });
+    return;
+  }
+  const pdfDataUrl = String(body.pdf_data_url ?? "").trim();
+  if (!pdfDataUrl) {
+    res.status(400).json({
+      error: "Falta el PDF firmado. Adjunta el archivo antes de firmar.",
+    });
+    return;
+  }
+  const titulo =
+    String(body.titulo ?? "").trim() || tituloActaAnyoMes(anyoMes);
+  const fecha = primerDiaAnyoMes(anyoMes);
+
+  let persisted;
+  try {
+    persisted = await persistActaPdf({
+      pdfDataUrl,
+      fecha,
+      titulo,
+      anyoMes,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String((e as Error).message ?? e) });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await ensureActasSchema();
+    await client.query("BEGIN");
+    const inserted = await client.query(
+      `INSERT INTO db_actas
+         (numero, convocatoria_id, titulo, fecha, estado, completada_en, firmada_en,
+          actualizado_en, creado_por)
+       VALUES (nextval('db_actas_numero_seq')::int, NULL, $1, $2::date, 'aceptada', now(), now(),
+               now(), $3)
+       RETURNING *`,
+      [
+        titulo,
+        fecha,
+        Number.isFinite(user.uid) ? user.uid : null,
+      ],
+    );
+    const actaId = Number(inserted.rows[0].id);
+    await client.query(
+      `INSERT INTO db_actas_pdf
+         (acta_id, pdf_url, pdf_filename, pdf_anyo_mes, pdf_size, subido_en, subido_por)
+       VALUES ($1, $2, $3, $4, $5, now(), $6)`,
+      [
+        actaId,
+        persisted.url,
+        persisted.filename,
+        persisted.anyoMes,
+        persisted.bytes,
+        Number.isFinite(user.uid) ? user.uid : null,
+      ],
+    );
+    await client.query("COMMIT");
+    // El acta recién creada se devuelve con los datos del PDF ya asociados.
+    const fila = {
+      ...inserted.rows[0],
+      pdf_pdf_url: persisted.url,
+      pdf_pdf_filename: persisted.filename,
+      pdf_pdf_anyo_mes: persisted.anyoMes,
+      pdf_pdf_size: persisted.bytes,
+      pdf_pdf_subido_en: new Date(),
+      pdf_pdf_subido_por: Number.isFinite(user.uid) ? user.uid : null,
+    };
+    res.status(201).json({
+      ok: true,
+      acta: mapActa(fila),
+      pdf_url: persisted.url,
+      pdf_filename: persisted.filename,
+      pdf_anyo_mes: persisted.anyoMes,
+      pdf_size: persisted.bytes,
+      suffix: persisted.suffix,
+    });
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      //
+    }
+    if (responderErrorEsquema(res, err)) return;
+    console.error("[POST /admin/actas/firmar-otro-mes]", err);
+    res.status(500).json({ error: "Error archivando el acta", detalle: String(err) });
+  } finally {
+    client.release();
   }
 });
 

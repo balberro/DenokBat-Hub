@@ -132,7 +132,19 @@ export default function ActaImpresion() {
   if (error || !data) return <p className="p-6 text-red-700">{error ?? t("common.error")}</p>;
 
   const { acta, puntos } = data;
-  const esBorrador = acta.estado !== "firmada";
+  const esBorrador = acta.estado !== "aceptada";
+
+  // Cabecera de impresión: "Acta de <mes> de <año>", derivada de la fecha del
+  // acta (o de la fecha de la convocatoria si el acta no tuviera fecha propia).
+  const fechaRef = acta.fecha ?? acta.convocatoria?.fecha ?? null;
+  const headerDate = (() => {
+    if (!fechaRef) return null;
+    const d = new Date(`${String(fechaRef).slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    const mes = t(`actas.firma.mes.${String(d.getMonth() + 1).padStart(2, "0")}`);
+    const anyo = String(d.getFullYear());
+    return { mes, anyo };
+  })();
 
   return (
     <div className="acta-print-root">
@@ -154,6 +166,30 @@ export default function ActaImpresion() {
         }
         .acta-print-page h1 { font-size: 24px; margin: 0; }
         .acta-print-page h2 { font-size: 18px; margin: 4px 0 12px; color: #555; font-weight: normal; }
+        .acta-print-page .acta-header {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px;
+          padding-bottom: 12px;
+          margin-bottom: 20px;
+          border-bottom: 2px solid #d1d5db;
+        }
+        .acta-print-page .acta-header-logo {
+          height: 72px;
+          width: auto;
+          max-width: 220px;
+          flex-shrink: 0;
+          object-fit: contain;
+        }
+        .acta-print-page .acta-header-title {
+          flex: 1;
+          min-width: 200px;
+          text-align: center;
+          font-size: 22px;
+          font-weight: bold;
+          color: #222;
+        }
         .acta-print-page h3 { font-size: 16px; margin: 24px 0 8px; }
         .acta-print-page h4 { font-size: 14px; margin: 12px 0 4px; }
         .acta-print-page .borrador-banner {
@@ -200,6 +236,24 @@ export default function ActaImpresion() {
       </div>
 
       <div className="acta-print-page">
+        <div className="acta-header">
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="Logo"
+            className="acta-header-logo"
+            loading="eager"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+          <div className="acta-header-title">
+            {headerDate
+              ? t("actas.print.header_title")
+                  .replace("{mes}", headerDate.mes)
+                  .replace("{anyo}", headerDate.anyo)
+              : t("actas.title.listado")}
+          </div>
+        </div>
         {esBorrador && (
           <div className="borrador-banner">
             {t("actas.print.borrador")} — {t(`actas.estado.${acta.estado}`)}
