@@ -29,22 +29,29 @@ function hasAnyRole(user: { role?: string; roles?: string[] }, ...allowed: strin
   const rs = rolesOf(user);
   return allowed.some((r) => rs.includes(r));
 }
+/**
+ * Roles con acceso TOTAL al gestor de actas (lectura y escritura), además de
+ * los roles funcionales. `administrador` y `superadmin` tienen acceso total en
+ * todo el proyecto (ver `replit.md`), por lo que también pueden gestionar
+ * actas aunque no tengan el rol `contable`.
+ */
+const ROLES_ESCRITURA_EXTRA = ["administrador", "superadmin"] as const;
 function puedeLeer(user: { role?: string; roles?: string[] }): boolean {
-  return hasAnyRole(user, "directivo", "contable");
+  return hasAnyRole(user, "directivo", "contable", ...ROLES_ESCRITURA_EXTRA);
 }
 /**
- * Lectura ampliada del gestor de actas: directivo, contable y **delegado**.
+ * Lectura ampliada del gestor de actas: directivo, contable, admin y **delegado**.
  * El delegado solo puede ver actas en estado `completa` o `aceptada`; los
- * borradores quedan restringidos al equipo redactor (directivo/contable).
+ * borradores quedan restringidos al equipo redactor (directivo/contable/admin).
  */
 function puedeLeerExtendida(user: { role?: string; roles?: string[] }): boolean {
-  return hasAnyRole(user, "directivo", "contable", "delegado");
+  return hasAnyRole(user, "directivo", "contable", "delegado", ...ROLES_ESCRITURA_EXTRA);
 }
 function esRedactor(user: { role?: string; roles?: string[] }): boolean {
-  return hasAnyRole(user, "directivo", "contable");
+  return hasAnyRole(user, "directivo", "contable", ...ROLES_ESCRITURA_EXTRA);
 }
 function puedeEscribir(user: { role?: string; roles?: string[] }): boolean {
-  return hasAnyRole(user, "contable");
+  return hasAnyRole(user, "contable", ...ROLES_ESCRITURA_EXTRA);
 }
 function isEstado(s: string): s is ActaEstado {
   return (ACTA_ESTADOS as readonly string[]).includes(s);
@@ -184,23 +191,53 @@ async function ensureActasSchema(): Promise<void> {
         ON db_actas_pdf (pdf_anyo_mes)
         WHERE pdf_anyo_mes IS NOT NULL
     `);
-    // Normalizar el estado legado 'firmada' → 'aceptada' y asegurar el CHECK.
-    await pool.query(`UPDATE db_actas SET estado = 'aceptada' WHERE estado = 'firmada'`);
-    await pool.query(`
-      DO $$
-      BEGIN
-        IF EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'db_actas_estado_chk'
-            AND conrelid = 'db_actas'::regclass
-        ) THEN
-          ALTER TABLE db_actas DROP CONSTRAINT db_actas_estado_chk;
-        END IF;
-        ALTER TABLE db_actas
-          ADD CONSTRAINT db_actas_estado_chk
-          CHECK (estado IN ('borrador', 'completa', 'aceptada'));
-      END $$;
+    // Normalizar el estado legado 'firmada' → 'aceptada'. Un UPDATE no requiere
+    // ser owner de la tabla, solo permiso de UPDATE. Best-effort: si fallara
+    // (p. ej. por un CHECK antiguo que no admite 'aceptada'), no bloqueamos.
+    try {
+      await pool.query(`UPDATE db_actas SET estado = 'aceptada' WHERE estado = 'firmada'`);
+    } catch (e) {
+      console.warn(
+        "[ensureActasSchema] No se pudo normalizar 'firmada'→'aceptada' (se ignora):",
+        describirErrorPg(e),
+      );
+    }
+
+    // Ajustar el CHECK de estados de forma BEST-EFFORT y sin bloquear.
+    //
+    // En muchos entornos el usuario de la aplicación NO es propietario de
+    // `db_actas`, y `ALTER TABLE ... DROP/ADD CONSTRAINT` falla con
+    // "must be owner of table" → tumbaba TODA la petición con 503 (por eso no
+    // se guardaba un acta en borrador). El CHECK definitivo lo fija la
+    // migración como owner (`lib/db/fix-db-actas-aceptada.sql`); aquí solo lo
+    // intentamos y, si no hay permisos, lo ignoramos y seguimos.
+    const chkRes = await pool.query<{ def: string }>(`
+      SELECT pg_get_constraintdef(oid) AS def
+        FROM pg_constraint
+       WHERE conname = 'db_actas_estado_chk'
+         AND conrelid = 'db_actas'::regclass
     `);
+    const yaAdmiteAceptada =
+      chkRes.rowCount === 0 || /aceptada/i.test(String(chkRes.rows[0]?.def ?? ""));
+    if (!yaAdmiteAceptada) {
+      try {
+        await pool.query(`
+          DO $$
+          BEGIN
+            ALTER TABLE db_actas DROP CONSTRAINT db_actas_estado_chk;
+            ALTER TABLE db_actas
+              ADD CONSTRAINT db_actas_estado_chk
+              CHECK (estado IN ('borrador', 'completa', 'aceptada'));
+          END $$;
+        `);
+      } catch (e) {
+        console.warn(
+          "[ensureActasSchema] No se pudo ajustar db_actas_estado_chk (se ignora; " +
+            "aplicar lib/db/fix-db-actas-aceptada.sql como owner):",
+          describirErrorPg(e),
+        );
+      }
+    }
   } catch (e) {
     // No nos tragamos el error: lo convertimos en uno claro y accionable para
     // que el usuario sepa exactamente qué ejecutar.
@@ -316,7 +353,9 @@ router.get("/admin/actas", requireAuth, async (req, res): Promise<void> => {
     const filters: string[] = [];
     const params: unknown[] = [];
     const estadoQuery = typeof req.query.estado === "string" ? req.query.estado : "";
-    const esContable = hasAnyRole(user, "contable");
+    // El contable y los roles de acceso total (admin/superadmin) ven todos los
+    // estados por defecto; el directivo arranca filtrado por "completa".
+    const esContable = hasAnyRole(user, "contable", ...ROLES_ESCRITURA_EXTRA);
     if (estadoQuery && isEstado(estadoQuery)) {
       params.push(estadoQuery);
       filters.push(`a.estado = $${params.length}`);
@@ -715,6 +754,252 @@ router.post(
       if (responderErrorEsquema(res, err)) return;
       console.error("[POST /admin/actas/desde-convocatoria]", err);
       res.status(500).json({ error: "Error creando acta", detalle: String(err) });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+/**
+ * Sincroniza los puntos del acta con el orden del día actual de su convocatoria.
+ *
+ * Solo en actas en borrador y vinculadas a una convocatoria. Permite reflejar
+ * en el acta los cambios hechos en la convocatoria DESPUÉS de crear el acta:
+ *   - Añade los puntos nuevos de la convocatoria.
+ *   - Actualiza título/descripción de los puntos ya presentes (preservando el
+ *     acuerdo, la resolución de propuesta, la acción de expediente y las notas
+ *     ya escritos en el acta).
+ *   - Propone eliminar los puntos del acta cuyo punto de convocatoria ya no
+ *     existe. Si alguno de esos puntos tiene datos escritos, requiere
+ *     confirmación explícita (`confirmar_datos = true`) antes de borrarlos.
+ *
+ * Modo por defecto (sin `confirmar`): devuelve un resumen (`dry_run`) sin
+ * aplicar cambios. Con `confirmar = true` aplica los cambios.
+ */
+router.post(
+  "/admin/actas/:id/sincronizar-convocatoria",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    if (!puedeEscribir(user)) {
+      res.status(403).json({ error: "No autorizado" });
+      return;
+    }
+    const actaId = parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(actaId)) {
+      res.status(400).json({ error: "Id no válido" });
+      return;
+    }
+    const confirmar = req.body?.confirmar === true;
+    const confirmarDatos = req.body?.confirmar_datos === true;
+
+    const client = await pool.connect();
+    try {
+      await ensureActasSchema();
+      await client.query("BEGIN");
+
+      const actaRes = await client.query(
+        "SELECT * FROM db_actas WHERE id = $1 FOR UPDATE",
+        [actaId],
+      );
+      if (actaRes.rowCount === 0) {
+        await client.query("ROLLBACK");
+        res.status(404).json({ error: "Acta no encontrada" });
+        return;
+      }
+      const acta = actaRes.rows[0] as Record<string, unknown>;
+      if (String(acta.estado) !== "borrador") {
+        await client.query("ROLLBACK");
+        res.status(409).json({
+          error: "Solo se puede sincronizar un acta en borrador",
+          estado: acta.estado,
+        });
+        return;
+      }
+      const convocatoriaId = acta.convocatoria_id != null ? Number(acta.convocatoria_id) : null;
+      if (convocatoriaId == null || !Number.isFinite(convocatoriaId)) {
+        await client.query("ROLLBACK");
+        res.status(409).json({ error: "El acta no está vinculada a una convocatoria" });
+        return;
+      }
+
+      // Puntos actuales de la convocatoria (con datos de propuesta enlazada).
+      const cpRes = await client.query(
+        `SELECT cp.id, cp.orden, cp.propuesta_id, cp.titulo, cp.descripcion, cp.notas,
+                p.denominacion AS prop_denominacion, p.descripcion AS prop_descripcion
+           FROM db_convocatoria_puntos cp
+           LEFT JOIN db_propuestas_junta p ON p.id = cp.propuesta_id
+          WHERE cp.convocatoria_id = $1
+          ORDER BY cp.orden, cp.id`,
+        [convocatoriaId],
+      );
+      const cpRows = cpRes.rows as Record<string, unknown>[];
+      const cpById = new Map<number, Record<string, unknown>>();
+      for (const cp of cpRows) cpById.set(Number(cp.id), cp);
+
+      // Puntos actuales del acta.
+      const apRes = await client.query(
+        `SELECT * FROM db_acta_puntos WHERE acta_id = $1 ORDER BY orden, id`,
+        [actaId],
+      );
+      const apRows = apRes.rows as Record<string, unknown>[];
+      const apByCp = new Map<number, Record<string, unknown>>();
+      for (const ap of apRows) {
+        if (ap.convocatoria_punto_id != null) {
+          apByCp.set(Number(ap.convocatoria_punto_id), ap);
+        }
+      }
+
+      // Añadidos: puntos de convocatoria sin punto de acta.
+      const añadidos = cpRows.filter((cp) => !apByCp.has(Number(cp.id)));
+
+      // Actualizados: puntos presentes en ambos con título/descripción distintos.
+      const actualizados: Record<string, unknown>[] = [];
+      for (const cp of cpRows) {
+        const ap = apByCp.get(Number(cp.id));
+        if (!ap) continue;
+        const cpTitulo = String(cp.titulo ?? cp.prop_denominacion ?? "").trim() || null;
+        const cpDescripcion = String(cp.descripcion ?? cp.prop_descripcion ?? "").trim() || null;
+        const apTitulo = (ap.titulo as string | null) ?? null;
+        const apDescripcion = (ap.descripcion as string | null) ?? null;
+        if (cpTitulo !== apTitulo || cpDescripcion !== apDescripcion) {
+          actualizados.push({ cp, ap, cpTitulo, cpDescripcion });
+        }
+      }
+
+      // Eliminados: puntos de acta vinculados a un punto de convocatoria que ya
+      // no existe. Los puntos libres (convocatoria_punto_id NULL) se conservan.
+      const eliminados = apRows.filter(
+        (ap) =>
+          ap.convocatoria_punto_id != null &&
+          !cpById.has(Number(ap.convocatoria_punto_id)),
+      );
+      const tieneDatos = (ap: Record<string, unknown>): boolean => {
+        const acuerdo = String(ap.acuerdo ?? "").trim();
+        const notas = String(ap.notas ?? "").trim();
+        return (
+          acuerdo.length > 0 ||
+          notas.length > 0 ||
+          ap.resultado_propuesta != null ||
+          ap.expediente_accion != null ||
+          ap.expediente_id != null
+        );
+      };
+      const eliminadosConDatos = eliminados.filter(tieneDatos);
+
+      // Si hay puntos con datos a eliminar y no se ha confirmado, no aplicamos
+      // nada y pedimos confirmación.
+      if (!confirmar || (eliminadosConDatos.length > 0 && !confirmarDatos)) {
+        await client.query("ROLLBACK");
+        res.json({
+          ok: true,
+          aplicado: false,
+          requiere_confirmacion: eliminadosConDatos.length > 0,
+          resumen: {
+            anadidos: añadidos.length,
+            actualizados: actualizados.length,
+            eliminados: eliminados.length,
+            eliminados_con_datos: eliminadosConDatos.length,
+          },
+          detalle: {
+            anadidos: añadidos.map((cp) => ({
+              convocatoria_punto_id: Number(cp.id),
+              titulo: String(cp.titulo ?? cp.prop_denominacion ?? "").trim() || null,
+            })),
+            actualizados: actualizados.map((u) => ({
+              acta_punto_id: Number((u.ap as Record<string, unknown>).id),
+              titulo_anterior: (u.ap as Record<string, unknown>).titulo,
+              titulo_nuevo: u.cpTitulo,
+            })),
+            eliminados: eliminados.map((ap) => ({
+              acta_punto_id: Number(ap.id),
+              titulo: ap.titulo,
+              tiene_datos: tieneDatos(ap),
+            })),
+          },
+        });
+        return;
+      }
+
+      // ---- Aplicar cambios ----
+      // 1) Añadir puntos nuevos.
+      for (const cp of añadidos) {
+        await client.query(
+          `INSERT INTO db_acta_puntos
+             (acta_id, convocatoria_punto_id, orden, propuesta_id, titulo, descripcion, notas)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            actaId,
+            Number(cp.id),
+            Number(cp.orden),
+            cp.propuesta_id ?? null,
+            String(cp.titulo ?? cp.prop_denominacion ?? "").trim() || null,
+            String(cp.descripcion ?? cp.prop_descripcion ?? "").trim() || null,
+            cp.notas ?? null,
+          ],
+        );
+      }
+      // 2) Actualizar título/descripción de los existentes.
+      for (const u of actualizados) {
+        await client.query(
+          `UPDATE db_acta_puntos
+              SET titulo = $1, descripcion = $2, actualizado_en = now()
+            WHERE id = $3`,
+          [u.cpTitulo, u.cpDescripcion, Number((u.ap as Record<string, unknown>).id)],
+        );
+      }
+      // 3) Eliminar puntos que ya no están en la convocatoria.
+      if (eliminados.length > 0) {
+        const ids = eliminados.map((ap) => Number(ap.id));
+        await client.query(
+          `DELETE FROM db_acta_puntos WHERE acta_id = $1 AND id = ANY($2::int[])`,
+          [actaId, ids],
+        );
+      }
+      // 4) Renumerar `orden` según el orden actual de la convocatoria (los
+      // puntos libres del acta se mantienen al final en su orden relativo).
+      const finalRes = await client.query(
+        `SELECT a.id,
+                cp.orden AS cp_orden
+           FROM db_acta_puntos a
+           LEFT JOIN db_convocatoria_puntos cp ON cp.id = a.convocatoria_punto_id
+          WHERE a.acta_id = $1
+          ORDER BY (cp.orden IS NULL), cp.orden, a.orden, a.id`,
+        [actaId],
+      );
+      let orden = 0;
+      for (const row of finalRes.rows as Record<string, unknown>[]) {
+        await client.query(
+          `UPDATE db_acta_puntos SET orden = $1 WHERE id = $2`,
+          [orden++, Number(row.id)],
+        );
+      }
+
+      await client.query(
+        "UPDATE db_actas SET actualizado_en = now() WHERE id = $1",
+        [actaId],
+      );
+
+      await client.query("COMMIT");
+      res.json({
+        ok: true,
+        aplicado: true,
+        resumen: {
+          anadidos: añadidos.length,
+          actualizados: actualizados.length,
+          eliminados: eliminados.length,
+          eliminados_con_datos: eliminadosConDatos.length,
+        },
+      });
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        //
+      }
+      if (responderErrorEsquema(res, err)) return;
+      console.error("[POST /admin/actas/:id/sincronizar-convocatoria]", err);
+      res.status(500).json({ error: "Error sincronizando con la convocatoria", detalle: String(err) });
     } finally {
       client.release();
     }

@@ -372,7 +372,8 @@ router.post("/admin/convocatorias", requireAuth, async (req, res): Promise<void>
 
 /**
  * Editar cabecera (título, tipo, fecha, hora, lugar, observaciones).
- * Permitido en estado 'borrador' o 'publicada'. No en 'celebrada'.
+ * Permitido en cualquier estado (borrador, publicada o celebrada), ya que el
+ * orden del día y sus datos pueden necesitar correcciones posteriores.
  */
 router.put("/admin/convocatorias/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
@@ -394,13 +395,6 @@ router.put("/admin/convocatorias/:id", requireAuth, async (req, res): Promise<vo
       .limit(1);
     if (!row) {
       res.status(404).json({ error: "Convocatoria no encontrada" });
-      return;
-    }
-    if (row.estado === "celebrada") {
-      res.status(409).json({
-        error: "Una convocatoria celebrada no se puede modificar",
-        estado: row.estado,
-      });
       return;
     }
     const patch: Partial<typeof convocatoriasTable.$inferInsert> = {
@@ -570,13 +564,6 @@ router.post(
         res.status(404).json({ error: "Convocatoria no encontrada" });
         return;
       }
-      if (convRes.rows[0].estado === "celebrada") {
-        await client.query("ROLLBACK");
-        res.status(409).json({
-          error: "No se pueden añadir puntos a una convocatoria celebrada",
-        });
-        return;
-      }
 
       // Snapshot de antecedentes de la propuesta (si origen=propuesta).
       let propTitulo: string | null = null;
@@ -711,10 +698,6 @@ router.put(
         res.status(404).json({ error: "Convocatoria no encontrada" });
         return;
       }
-      if (conv.estado === "celebrada") {
-        res.status(409).json({ error: "No se pueden editar puntos de una convocatoria celebrada" });
-        return;
-      }
       const [punto] = await db
         .select()
         .from(convocatoriaPuntosTable)
@@ -807,13 +790,6 @@ router.delete(
         res.status(404).json({ error: "Convocatoria no encontrada" });
         return;
       }
-      if (convRes.rows[0].estado === "celebrada") {
-        await client.query("ROLLBACK");
-        res
-          .status(409)
-          .json({ error: "No se pueden quitar puntos de una convocatoria celebrada" });
-        return;
-      }
       const puntoRes = await client.query(
         "SELECT propuesta_id FROM db_convocatoria_puntos WHERE id = $1 AND convocatoria_id = $2 FOR UPDATE",
         [puntoId, id],
@@ -895,11 +871,6 @@ router.post(
       if (convRes.rowCount === 0) {
         await client.query("ROLLBACK");
         res.status(404).json({ error: "Convocatoria no encontrada" });
-        return;
-      }
-      if (convRes.rows[0].estado === "celebrada") {
-        await client.query("ROLLBACK");
-        res.status(409).json({ error: "No se puede reordenar una convocatoria celebrada" });
         return;
       }
       for (let i = 0; i < ids.length; i++) {

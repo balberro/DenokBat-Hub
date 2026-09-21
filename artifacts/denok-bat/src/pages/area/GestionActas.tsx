@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore, getUserRoles } from "@/store/use-store";
 import { useTranslation } from "@/i18n/translations";
 import { Button } from "@/components/ui/button";
@@ -152,10 +152,19 @@ export default function GestionActas() {
   const { t } = useTranslation();
 
   const roles = user ? getUserRoles(user) : [];
-  const puedeEscribir = roles.includes("contable");
-  // El contable tiene acceso total a todas las actas (acceso desde
-  // Documentación → Actas); el directivo arranca filtrado por "completa".
-  const esContable = roles.includes("contable");
+  // Escritura de actas: rol `contable` y roles de acceso total
+  // (`administrador`/`superadmin`, que en este proyecto tienen acceso global).
+  const puedeEscribir =
+    roles.includes("contable") ||
+    roles.includes("administrador") ||
+    roles.includes("superadmin");
+  // El contable (y los roles de acceso total) tienen acceso completo a todas
+  // las actas (acceso desde Documentación → Actas); el directivo arranca
+  // filtrado por "completa".
+  const esContable =
+    roles.includes("contable") ||
+    roles.includes("administrador") ||
+    roles.includes("superadmin");
 
   const [items, setItems] = useState<Acta[]>([]);
   const [estadoFiltro, setEstadoFiltro] = useState(() => (esContable ? "" : "completa"));
@@ -165,6 +174,19 @@ export default function GestionActas() {
   const [convocatorias, setConvocatorias] = useState<ConvocatoriaDisponible[]>([]);
   const [creando, setCreando] = useState(false);
   const [convocatoriaId, setConvocatoriaId] = useState("");
+  // Mensaje mostrado justo debajo del botón de guardar en el formulario de
+  // "Nueva acta" (error si falta la convocatoria, ok si se guardó bien).
+  const [msgGuardar, setMsgGuardar] = useState<{ tipo: "error" | "ok"; texto: string } | null>(
+    null,
+  );
+  // Temporizador del mensaje de éxito al crear acta, para poder cancelarlo si
+  // el usuario cierra el formulario antes de que se cierre solo.
+  const msgGuardarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (msgGuardarTimer.current) clearTimeout(msgGuardarTimer.current);
+    };
+  }, []);
   // Estado con el que se creará el acta: borrador o completa.
   const [estadoInicial, setEstadoInicial] = useState<"borrador" | "completa">("borrador");
   // Vista previa del orden del día de la convocatoria seleccionada al crear el acta.
@@ -255,6 +277,22 @@ export default function GestionActas() {
     accionesExistentes: AccionEdit[];
     accionesNuevas: AccionDraft[];
   } | null>(null);
+  // Estado del flujo de sincronización del acta con su convocatoria.
+  type SyncResumen = {
+    anadidos: number;
+    actualizados: number;
+    eliminados: number;
+    eliminados_con_datos: number;
+  };
+  type SyncDetalleEliminado = { acta_punto_id: number; titulo: string | null; tiene_datos: boolean };
+  const [syncResumen, setSyncResumen] = useState<SyncResumen | null>(null);
+  const [syncModal, setSyncModal] = useState<{
+    open: boolean;
+    resumen: SyncResumen | null;
+    eliminadosConDatos: SyncDetalleEliminado[];
+  }>({ open: false, resumen: null, eliminadosConDatos: [] });
+  // Checkbox del modal: aceptar borrar puntos con datos escritos.
+  const [syncConfirmarDatos, setSyncConfirmarDatos] = useState(false);
 
   const labelEstado = (estado: string) => t(`actas.estado.${estado}`);
 
@@ -365,6 +403,9 @@ export default function GestionActas() {
       setSelectedId(id);
       setMsg(null);
       setEditandoCabecera(false);
+      setSyncResumen(null);
+      setSyncModal({ open: false, resumen: null, eliminadosConDatos: [] });
+      setSyncConfirmarDatos(false);
       const r = await fetch(`${API_BASE}/api/admin/actas/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -408,9 +449,13 @@ export default function GestionActas() {
   }, [creando, loadConvocatorias]);
 
   async function crearActa() {
-    if (!token || !convocatoriaId) return;
+    if (!token) return;
+    if (!convocatoriaId) {
+      setMsgGuardar({ tipo: "error", texto: t("actas.form.no_guardado_sin_convocatoria") });
+      return;
+    }
     setSaving(true);
-    setMsg(null);
+    setMsgGuardar(null);
     try {
       // Solo enviamos overrides con algún cambio para no sobreescribir con vacíos.
       const overridesPayload = Object.entries(previewOverrides)
@@ -441,23 +486,31 @@ export default function GestionActas() {
       });
       const d = await r.json();
       if (!r.ok) {
-        setMsg(mensajeError(d));
+        setMsgGuardar({ tipo: "error", texto: mensajeError(d) });
         return;
       }
-      setMsg(
-        estadoInicial === "completa" ? t("actas.msg.completa") : t("actas.msg.creada"),
-      );
-      setCreando(false);
-      setConvocatoriaId("");
-      setPreviewPuntos([]);
-      setPreviewOverrides({});
-      setEstadoInicial("borrador");
-      setHeaderForm({ titulo: "", fecha: "", asistentes: "", resumen: "", observaciones: "" });
-      await loadList();
+      const textoOk =
+        estadoInicial === "completa"
+          ? t("actas.msg.guardado_completa")
+          : t("actas.msg.guardado_borrador");
+      setMsgGuardar({ tipo: "ok", texto: textoOk });
       const id = Number(d.acta?.id);
+      // Dejamos visible el mensaje de confirmación bajo el botón un instante
+      // antes de cerrar el formulario y recargar el listado.
+      await loadList();
       if (Number.isFinite(id)) await loadDetalle(id);
+      msgGuardarTimer.current = setTimeout(() => {
+        setCreando(false);
+        setConvocatoriaId("");
+        setPreviewPuntos([]);
+        setPreviewOverrides({});
+        setEstadoInicial("borrador");
+        setHeaderForm({ titulo: "", fecha: "", asistentes: "", resumen: "", observaciones: "" });
+        setMsgGuardar(null);
+        msgGuardarTimer.current = null;
+      }, 1200);
     } catch {
-      setMsg(t("common.network_error"));
+      setMsgGuardar({ tipo: "error", texto: t("common.network_error") });
     } finally {
       setSaving(false);
     }
@@ -898,6 +951,65 @@ export default function GestionActas() {
     }
   }
 
+  /**
+   * Sincroniza el acta (en borrador) con el orden del día actual de su
+   * convocatoria. Se ejecuta en dos fases:
+   *   1) `confirmar=false`: dry-run → devuelve el resumen y lo mostramos en un
+   *      modal para que el usuario revise antes de aplicar.
+   *   2) `confirmar=true`: aplica los cambios. Si quedan puntos del acta con
+   *      datos que desaparecerían de la convocatoria, requiere
+   *      `confirmar_datos=true` (checkbox adicional en el modal).
+   */
+  async function sincronizarConvocatoria(
+    confirmar: boolean,
+    confirmarDatos: boolean,
+  ): Promise<{ ok: boolean; requiereDatos: boolean }> {
+    if (!token || !detalle) return { ok: false, requiereDatos: false };
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await fetch(
+        `${API_BASE}/api/admin/actas/${detalle.acta.id}/sincronizar-convocatoria`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ confirmar, confirmar_datos: confirmarDatos }),
+        },
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg(String(d?.error ?? t("common.error")));
+        return { ok: false, requiereDatos: false };
+      }
+      const resumen = (d?.resumen as SyncResumen) ?? null;
+      if (d?.aplicado) {
+        await loadDetalle(detalle.acta.id);
+        setSyncResumen(resumen);
+        setSyncModal({ open: false, resumen: null, eliminadosConDatos: [] });
+        setMsg(t("actas.sync.msg_ok"));
+        return { ok: true, requiereDatos: false };
+      }
+      // Dry-run (o falta confirmación de datos): abrir/actualizar el modal.
+      const elim = ((d?.detalle?.eliminados ?? []) as SyncDetalleEliminado[]).filter(
+        (e) => e.tiene_datos,
+      );
+      setSyncModal({
+        open: true,
+        resumen,
+        eliminadosConDatos: elim,
+      });
+      return { ok: false, requiereDatos: elim.length > 0 };
+    } catch {
+      setMsg(t("common.network_error"));
+      return { ok: false, requiereDatos: false };
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // ------------ Firma con subida de PDF ------------
   type FirmaModalState = {
     open: boolean;
@@ -1267,9 +1379,14 @@ export default function GestionActas() {
             <Button
               className="gap-2"
               onClick={() => {
+                if (msgGuardarTimer.current) {
+                  clearTimeout(msgGuardarTimer.current);
+                  msgGuardarTimer.current = null;
+                }
                 setCreando(true);
                 setDetalle(null);
                 setSelectedId(null);
+                setMsgGuardar(null);
               }}
             >
               <Plus className="w-4 h-4" />
@@ -1285,6 +1402,17 @@ export default function GestionActas() {
         </p>
       )}
 
+      {syncResumen &&
+        (syncResumen.anadidos > 0 ||
+          syncResumen.actualizados > 0 ||
+          syncResumen.eliminados > 0) && (
+          <p className="mb-4 text-xs text-muted-foreground bg-muted/30 rounded-xl px-4 py-2">
+            {t("actas.sync.resumen_anadidos").replace("{n}", String(syncResumen.anadidos))} ·{" "}
+            {t("actas.sync.resumen_actualizados").replace("{n}", String(syncResumen.actualizados))} ·{" "}
+            {t("actas.sync.resumen_eliminados").replace("{n}", String(syncResumen.eliminados))}
+          </p>
+        )}
+
       {creando && puedeEscribir && (
         <ActaFormCard
           modo="crear"
@@ -1295,12 +1423,18 @@ export default function GestionActas() {
           titulo={t("actas.form.nueva_title")}
           guardarLabel={`${t("actas.form.guardar_como")} ${labelEstado(estadoInicial)}`}
           onGuardar={() => void crearActa()}
+          mensajeGuardar={msgGuardar}
           onCancelar={() => {
+            if (msgGuardarTimer.current) {
+              clearTimeout(msgGuardarTimer.current);
+              msgGuardarTimer.current = null;
+            }
             setCreando(false);
             setConvocatoriaId("");
             setPreviewPuntos([]);
             setPreviewOverrides({});
             setEstadoInicial("borrador");
+            setMsgGuardar(null);
           }}
           selectorConvocatoria={
             <select
@@ -1308,6 +1442,7 @@ export default function GestionActas() {
               onChange={(e) => {
                 const id = e.target.value;
                 setConvocatoriaId(id);
+                setMsgGuardar(null);
                 const c = convocatorias.find((row) => String(row.id) === id);
                 if (c) {
                   setHeaderForm((p) => ({
@@ -1506,6 +1641,119 @@ export default function GestionActas() {
         />
       )}
 
+      {syncModal.open && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full my-8 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <RotateCw className="w-5 h-5 text-primary" />
+                {t("actas.sync.modal_title")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setSyncModal({ open: false, resumen: null, eliminadosConDatos: [] });
+                  setSyncConfirmarDatos(false);
+                }}
+                className="p-1 rounded hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-sm">
+              <p className="text-muted-foreground">{t("actas.sync.modal_intro")}</p>
+              {syncModal.resumen && (
+                <ul className="space-y-1">
+                  <li>
+                    {t("actas.sync.resumen_anadidos").replace(
+                      "{n}",
+                      String(syncModal.resumen.anadidos),
+                    )}
+                  </li>
+                  <li>
+                    {t("actas.sync.resumen_actualizados").replace(
+                      "{n}",
+                      String(syncModal.resumen.actualizados),
+                    )}
+                  </li>
+                  <li>
+                    {t("actas.sync.resumen_eliminados").replace(
+                      "{n}",
+                      String(syncModal.resumen.eliminados),
+                    )}
+                  </li>
+                </ul>
+              )}
+              {syncModal.resumen &&
+                syncModal.resumen.anadidos === 0 &&
+                syncModal.resumen.actualizados === 0 &&
+                syncModal.resumen.eliminados === 0 && (
+                  <p className="bg-muted/40 rounded-lg px-3 py-2">
+                    {t("actas.sync.msg_sin_cambios")}
+                  </p>
+                )}
+              {syncModal.eliminadosConDatos.length > 0 && (
+                <div className="border border-amber-300 bg-amber-50 text-amber-900 rounded-xl px-3 py-3 space-y-2">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4" />
+                    {t("actas.sync.aviso_datos_title").replace(
+                      "{n}",
+                      String(syncModal.eliminadosConDatos.length),
+                    )}
+                  </p>
+                  <p className="text-xs">{t("actas.sync.aviso_datos_intro")}</p>
+                  <ul className="text-xs space-y-0.5 list-disc list-inside">
+                    {syncModal.eliminadosConDatos.map((e) => (
+                      <li key={e.acta_punto_id}>
+                        {e.titulo ?? t("actas.puntos.sin_titulo")}
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="inline-flex items-start gap-2 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={syncConfirmarDatos}
+                      onChange={(e) => setSyncConfirmarDatos(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs font-medium">
+                      {t("actas.sync.aviso_datos_checkbox")}
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-border bg-muted/20">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSyncModal({ open: false, resumen: null, eliminadosConDatos: [] });
+                  setSyncConfirmarDatos(false);
+                }}
+                disabled={saving}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={() => void sincronizarConvocatoria(true, syncConfirmarDatos)}
+                disabled={
+                  saving ||
+                  (syncModal.eliminadosConDatos.length > 0 && !syncConfirmarDatos) ||
+                  (!!syncModal.resumen &&
+                    syncModal.resumen.anadidos === 0 &&
+                    syncModal.resumen.actualizados === 0 &&
+                    syncModal.resumen.eliminados === 0)
+                }
+                className="gap-1.5"
+              >
+                <RotateCw className="w-4 h-4" />
+                {saving ? t("common.saving") : t("actas.sync.aplicar")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {emailModal.open && detalle && (
         <EmailActaModal
           modal={emailModal}
@@ -1669,6 +1917,18 @@ export default function GestionActas() {
                       >
                         <PenLine className="w-4 h-4" />
                         {t("common.edit")}
+                      </Button>
+                    )}
+                    {puedeEscribir && acta.convocatoria_id != null && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => void sincronizarConvocatoria(false, false)}
+                        disabled={saving}
+                      >
+                        <RotateCw className="w-4 h-4" />
+                        {t("actas.sync.button")}
                       </Button>
                     )}
                     <p className="text-xs text-muted-foreground self-center">
@@ -2659,6 +2919,7 @@ function ActaFormCard({
   selectorConvocatoria,
   slotPuntos,
   selectorEstado,
+  mensajeGuardar,
 }: {
   form: ActaFormValues;
   onChange: (
@@ -2674,6 +2935,7 @@ function ActaFormCard({
   selectorConvocatoria?: React.ReactNode;
   slotPuntos?: React.ReactNode;
   selectorEstado?: React.ReactNode;
+  mensajeGuardar?: { tipo: "error" | "ok"; texto: string } | null;
 }) {
   const contenedor =
     modo === "crear"
@@ -2749,6 +3011,17 @@ function ActaFormCard({
           {t("common.cancel")}
         </Button>
       </div>
+      {mensajeGuardar && (
+        <p
+          className={`text-sm rounded-lg px-3 py-2 ${
+            mensajeGuardar.tipo === "ok"
+              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+          }`}
+        >
+          {mensajeGuardar.texto}
+        </p>
+      )}
     </div>
   );
 }

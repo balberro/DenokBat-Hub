@@ -433,7 +433,10 @@ export default function GestionConvocatorias() {
 
   const conv = detalle?.convocatoria;
   const enBorrador = conv?.estado === "borrador";
-  const editable = enBorrador || conv?.estado === "publicada";
+  // El orden del día es editable en los tres estados (borrador, publicada y
+  // celebrada), para poder corregir puntos tras la reunión.
+  const editable =
+    enBorrador || conv?.estado === "publicada" || conv?.estado === "celebrada";
 
   const propuestasFiltradas = useMemo(() => {
     const yaIds = new Set(detalle?.puntos.map((p) => p.propuesta_id).filter(Boolean) ?? []);
