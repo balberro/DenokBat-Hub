@@ -36,9 +36,27 @@ function puedeEscribir(user: { role?: string; roles?: string[] }): boolean {
   return hasAnyRole(user, "contable");
 }
 
-function isEstado(s: string): s is ConvocatoriaEstado {
-  return (CONVOCATORIA_ESTADOS as readonly string[]).includes(s);
+/**
+ * Comprueba si la tabla del buzón de propuestas existe (cacheado).
+ * Permite que convocatorias con puntos libres funcionen aunque el módulo del
+ * buzón todavía no esté instalado en la base de datos.
+ */
+const tablasExistentesCacheConv = new Map<string, boolean>();
+async function tablaExisteConv(nombre: string): Promise<boolean> {
+  const cached = tablasExistentesCacheConv.get(nombre);
+  if (cached !== undefined) return cached;
+  try {
+    const r = await pool.query("SELECT to_regclass($1) AS reg", [nombre]);
+    const existe = r.rows[0]?.reg != null;
+    tablasExistentesCacheConv.set(nombre, existe);
+    return existe;
+  } catch {
+    return true;
+  }
 }
+
+function isEstado(s: string): s is ConvocatoriaEstado {
+  return (CONVOCATORIA_ESTADOS as readonly string[]).includes(s);}
 function isTipo(s: string): s is ConvocatoriaTipo {
   return (CONVOCATORIA_TIPOS as readonly string[]).includes(s);
 }
@@ -271,7 +289,7 @@ router.get("/admin/convocatorias/:id", requireAuth, async (req, res): Promise<vo
       .map((p) => p.propuestaId)
       .filter((v): v is number => typeof v === "number");
     const propMap = new Map<number, PropuestaRow>();
-    if (propIds.length > 0) {
+    if (propIds.length > 0 && (await tablaExisteConv("db_propuestas_junta"))) {
       // Drizzle inArray para mantener tipado; aquí usamos query simple por simplicidad.
       const propRows = await pool.query(
         `SELECT * FROM db_propuestas_junta WHERE id = ANY($1::int[])`,
@@ -481,16 +499,18 @@ router.delete("/admin/convocatorias/:id", requireAuth, async (req, res): Promise
         .json({ error: "Solo se puede borrar una convocatoria en 'borrador'", estado: convRes.rows[0].estado });
       return;
     }
-    // Devolver propuestas asociadas al buzón.
-    await client.query(
-      `UPDATE db_propuestas_junta
-          SET estado_buzon = 'pendiente', junta_id = NULL, actualizado_en = now()
-        WHERE id IN (
-          SELECT propuesta_id FROM db_convocatoria_puntos
-           WHERE convocatoria_id = $1 AND propuesta_id IS NOT NULL
-        )`,
-      [id],
-    );
+    // Devolver propuestas asociadas al buzón (si el módulo del buzón existe).
+    if (await tablaExisteConv("db_propuestas_junta")) {
+      await client.query(
+        `UPDATE db_propuestas_junta
+            SET estado_buzon = 'pendiente', junta_id = NULL, actualizado_en = now()
+          WHERE id IN (
+            SELECT propuesta_id FROM db_convocatoria_puntos
+             WHERE convocatoria_id = $1 AND propuesta_id IS NOT NULL
+          )`,
+        [id],
+      );
+    }
     await client.query("DELETE FROM db_convocatorias WHERE id = $1", [id]);
     await client.query("COMMIT");
     res.json({ ok: true });

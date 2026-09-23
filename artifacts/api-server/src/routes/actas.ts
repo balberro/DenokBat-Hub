@@ -277,6 +277,32 @@ function responderErrorEsquema(res: import("express").Response, err: unknown): b
   return false;
 }
 
+/**
+ * Comprueba si una tabla existe en el esquema actual (cacheado en memoria).
+ *
+ * Sirve para tolerar instalaciones donde la tabla del buzón de propuestas
+ * (`db_propuestas_junta`) todavía no se ha creado: en ese caso usamos
+ * variantes de las consultas SIN el `LEFT JOIN` a esa tabla, de modo que
+ * convocatorias y actas con puntos libres siguen funcionando.
+ */
+const tablasExistentesCache = new Map<string, boolean>();
+async function tablaExiste(nombre: string): Promise<boolean> {
+  const cached = tablasExistentesCache.get(nombre);
+  if (cached !== undefined) return cached;
+  try {
+    const r = await pool.query("SELECT to_regclass($1) AS reg", [nombre]);
+    const existe = r.rows[0]?.reg != null;
+    tablasExistentesCache.set(nombre, existe);
+    return existe;
+  } catch {
+    // Ante la duda, asumimos que existe para no cambiar el comportamiento.
+    return true;
+  }
+}
+async function propuestasDisponibles(): Promise<boolean> {
+  return tablaExiste("db_propuestas_junta");
+}
+
 function mapActa(row: Record<string, unknown>) {
   return {
     id: row.id,
@@ -453,16 +479,24 @@ router.get("/admin/actas/:id", requireAuth, async (req, res): Promise<void> => {
         .json({ error: "No autorizado: el acta está en borrador." });
       return;
     }
+    const conPropuestas = await propuestasDisponibles();
     const puntosRes = await pool.query(
       `SELECT ap.*,
+              ${conPropuestas ? `
               p.denominacion AS prop_denominacion,
               p.descripcion AS prop_descripcion,
               p.decision_solicitada AS prop_decision_solicitada,
               p.estado_buzon AS prop_estado_buzon,
               p.resultado AS prop_resultado,
-              p.expediente_id AS prop_expediente_id
+              p.expediente_id AS prop_expediente_id` : `
+              NULL::varchar AS prop_denominacion,
+              NULL::text AS prop_descripcion,
+              NULL::varchar AS prop_decision_solicitada,
+              NULL::varchar AS prop_estado_buzon,
+              NULL::varchar AS prop_resultado,
+              NULL::int AS prop_expediente_id`}
          FROM db_acta_puntos ap
-         LEFT JOIN db_propuestas_junta p ON p.id = ap.propuesta_id
+         ${conPropuestas ? "LEFT JOIN db_propuestas_junta p ON p.id = ap.propuesta_id" : ""}
         WHERE ap.acta_id = $1
         ORDER BY ap.orden, ap.id`,
       [id],
@@ -568,6 +602,7 @@ router.post(
       const acta = actaRes.rows[0] as Record<string, unknown>;
       const actaId = Number(acta.id);
 
+      const conPropuestas = await propuestasDisponibles();
       await client.query(
         `INSERT INTO db_acta_puntos
            (acta_id, convocatoria_punto_id, orden, propuesta_id, titulo, descripcion, notas)
@@ -575,11 +610,15 @@ router.post(
                 cp.id,
                 cp.orden,
                 cp.propuesta_id,
-                COALESCE(cp.titulo, p.denominacion),
-                COALESCE(cp.descripcion, p.descripcion),
+                ${conPropuestas
+                  ? "COALESCE(cp.titulo, p.denominacion)"
+                  : "cp.titulo"},
+                ${conPropuestas
+                  ? "COALESCE(cp.descripcion, p.descripcion)"
+                  : "cp.descripcion"},
                 cp.notas
            FROM db_convocatoria_puntos cp
-           LEFT JOIN db_propuestas_junta p ON p.id = cp.propuesta_id
+           ${conPropuestas ? "LEFT JOIN db_propuestas_junta p ON p.id = cp.propuesta_id" : ""}
           WHERE cp.convocatoria_id = $2
           ORDER BY cp.orden, cp.id`,
         [actaId, convocatoriaId],
@@ -654,7 +693,8 @@ router.post(
 
       // Si se creó directamente como "completa", resolver las propuestas de los
       // puntos con resultado (misma lógica que POST /admin/actas/:id/completar).
-      if (crearComoCompleta) {
+      // Si la tabla del buzón no existe, no hay propuestas que resolver.
+      if (crearComoCompleta && conPropuestas) {
         const puntosRes = await client.query(
           `SELECT * FROM db_acta_puntos WHERE acta_id = $1 ORDER BY orden, id FOR UPDATE`,
           [actaId],
@@ -824,11 +864,14 @@ router.post(
       }
 
       // Puntos actuales de la convocatoria (con datos de propuesta enlazada).
+      const conPropuestas = await propuestasDisponibles();
       const cpRes = await client.query(
-        `SELECT cp.id, cp.orden, cp.propuesta_id, cp.titulo, cp.descripcion, cp.notas,
-                p.denominacion AS prop_denominacion, p.descripcion AS prop_descripcion
+        `SELECT cp.id, cp.orden, cp.propuesta_id, cp.titulo, cp.descripcion, cp.notas
+                ${conPropuestas
+                  ? ", p.denominacion AS prop_denominacion, p.descripcion AS prop_descripcion"
+                  : ", NULL::varchar AS prop_denominacion, NULL::text AS prop_descripcion"}
            FROM db_convocatoria_puntos cp
-           LEFT JOIN db_propuestas_junta p ON p.id = cp.propuesta_id
+           ${conPropuestas ? "LEFT JOIN db_propuestas_junta p ON p.id = cp.propuesta_id" : ""}
           WHERE cp.convocatoria_id = $1
           ORDER BY cp.orden, cp.id`,
         [convocatoriaId],
@@ -1236,8 +1279,11 @@ router.post("/admin/actas/:id/completar", requireAuth, async (req, res): Promise
     }
 
     const ahora = new Date();
+    const conPropuestasCompletar = await propuestasDisponibles();
     for (const punto of puntosRes.rows as Record<string, unknown>[]) {
       if (punto.propuesta_id == null || punto.resultado_propuesta == null) continue;
+      // Sin tabla de buzón no hay propuestas que resolver.
+      if (!conPropuestasCompletar) continue;
       const propuestaId = Number(punto.propuesta_id);
       const resultado = String(punto.resultado_propuesta);
       const propRes = await client.query(
@@ -1723,12 +1769,16 @@ router.post("/admin/actas/:id/enviar-email", requireAuth, async (req, res): Prom
       });
       return;
     }
+    const conPropuestas = await propuestasDisponibles();
     const puntosRes = await pool.query(
-      `SELECT ap.*,
-              p.denominacion AS prop_denominacion,
-              p.descripcion AS prop_descripcion
+      `SELECT ap.*
+              ${conPropuestas
+                ? `, p.denominacion AS prop_denominacion,
+                    p.descripcion AS prop_descripcion`
+                : `, NULL::varchar AS prop_denominacion,
+                    NULL::text AS prop_descripcion`}
          FROM db_acta_puntos ap
-         LEFT JOIN db_propuestas_junta p ON p.id = ap.propuesta_id
+         ${conPropuestas ? "LEFT JOIN db_propuestas_junta p ON p.id = ap.propuesta_id" : ""}
         WHERE ap.acta_id = $1
         ORDER BY ap.orden, ap.id`,
       [id],
@@ -1896,15 +1946,22 @@ router.get("/actas-firmadas/:id", requireAuth, async (req, res): Promise<void> =
       res.status(404).json({ error: "Acta no encontrada o no firmada" });
       return;
     }
+    const conPropuestas = await propuestasDisponibles();
     const puntosRes = await pool.query(
-      `SELECT ap.*,
-              p.denominacion AS prop_denominacion,
-              p.descripcion AS prop_descripcion,
-              p.decision_solicitada AS prop_decision_solicitada,
-              p.resultado AS prop_resultado,
-              p.expediente_id AS prop_expediente_id
+      `SELECT ap.*
+              ${conPropuestas
+                ? `, p.denominacion AS prop_denominacion,
+                    p.descripcion AS prop_descripcion,
+                    p.decision_solicitada AS prop_decision_solicitada,
+                    p.resultado AS prop_resultado,
+                    p.expediente_id AS prop_expediente_id`
+                : `, NULL::varchar AS prop_denominacion,
+                    NULL::text AS prop_descripcion,
+                    NULL::varchar AS prop_decision_solicitada,
+                    NULL::varchar AS prop_resultado,
+                    NULL::int AS prop_expediente_id`}
          FROM db_acta_puntos ap
-         LEFT JOIN db_propuestas_junta p ON p.id = ap.propuesta_id
+         ${conPropuestas ? "LEFT JOIN db_propuestas_junta p ON p.id = ap.propuesta_id" : ""}
         WHERE ap.acta_id = $1
         ORDER BY ap.orden, ap.id`,
       [id],
