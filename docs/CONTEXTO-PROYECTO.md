@@ -2,13 +2,13 @@
 
 > **Documento vivo para retomar el trabajo entre sesiones de chat.**
 > Actualízalo al final de cada bloque de cambios (ver *Registro de cambios*).
-> Última actualización: **2026-05-26** (rama `test/dinahosting`, commits `5fab7f5`, `d1bf11e`).
+> Última actualización: **2026-05-27** (rama `test/dinahosting`, commits `6ae1388`, `91d40dc`).
 
 ---
 
 ## 1. Qué es
 
-App web de la **Asociación de Jubilados Denok Bat** (País Vasco). Bilingüe (Euskara/Español). Headless: frontend React + API Express + PostgreSQL local, con sincronización a **Odoo 17** por XML-RPC.
+App web de la **Asociación de Jubilados Denok Bat** (Nafarroa). Bilingüe (Euskara/Español). Headless: frontend React + API Express + PostgreSQL local, con sincronización a **Odoo 17** por XML-RPC.
 
 ## 2. Cómo trabajar en este repo (IMPORTANTE)
 
@@ -26,6 +26,14 @@ App web de la **Asociación de Jubilados Denok Bat** (País Vasco). Bilingüe (E
   (equivale a `pnpm run update:dinahosting-test`). Hace `git pull` + `install` + `build:test` + `touch tmp/restart.txt` (Passenger).
 - **Servidor de test (Dinahosting):** corre por **Passenger** (`app.js` → carga `dist/index.cjs`). El mensaje "PM2 no tiene app 'denokbat-test'" es **normal** y se puede ignorar (PM2 es una alternativa vía `ecosystem.config.cjs`).
 - **Esquema de BD en runtime:** varios módulos aplican/garantizan su esquema en runtime (`ensure*Schema()`), de modo que en test normalmente **no hay que ejecutar SQL a mano**. Si falta permisos (usuario no-owner), la API devuelve **503 con hint SQL accionable**; entonces se aplica la migración como owner.
+- **Aplicar SQL sin `psql` (servidor de test):** en el servidor de Dinahosting **no hay `psql`** instalado. Para aplicar migraciones `.sql` a mano se usa el script Node (usa `pg` del workspace `lib/db`):
+  ```bash
+  cd /home/denokbat0/www/azkendantza
+  set -a; source scripts/dinahosting-test.env.local; set +a   # carga DATABASE_URL de test
+  node scripts/apply-sql.mjs lib/db/fix-db-<...>.sql [...]
+  ```
+  Cada fichero se aplica en transacción y los scripts del repo son idempotentes. Si sale `must be owner of table`, usar una `DATABASE_URL` con usuario owner/superusuario.
+- **`DATABASE_URL` de test:** la **correcta** (la que usa la app real vía Passenger) está en `app.local.js` (fuera de git): `postgres://denokdantza2026:***@pgsql03.dinaserver.com:5432/denokdantza`. La de `scripts/dinahosting-test.env.local` debe coincidir con esa; ojo con placeholders (`postgres://...`) o `localhost` (dan `ENOTFOUND`/`ECONNREFUSED`), y con contraseñas copiadas mal (`password authentication failed`).
 - **No** hacer commit de secretos: `scripts/*.env.local` y `app.local.js` están fuera de git.
 - **Lint:** no hay script de lint configurado. Prettier está como devDependency.
 
@@ -55,7 +63,7 @@ docs/                   # documentación (incluye este CONTEXTO-PROYECTO.md)
 
 ## 4. Roles de usuario
 
-`socio` · `delegado` · `directivo` · `contable` · `administrador` · `superadmin`
+`visitante` · `usuario` · `socio` · `delegado` · `directivo` · `contable` · `administrador`
 
 El gating de rutas privadas vive en `artifacts/denok-bat/src/pages/AreaPrivada.tsx` (`allowedRoles` + `components`), y las rutas en `App.tsx`.
 
@@ -74,8 +82,8 @@ Cada paso pre-rellena el siguiente y enlaza (no reescribe). Ver `docs/DEFINICION
 | Actividades, eventos, inscripciones, pagos | Implementado | `routes/actividades.ts`, `eventos.ts`, … |
 | Sugerencias | Implementado | `routes/sugerencias.ts` |
 | Propuestas a la junta (buzón) | Implementado | `routes/propuestasJunta.ts` |
-| Convocatorias | Implementado | `routes/convocatorias.ts` |
-| **Actas** | Implementado (refactor 2026-05-26) | `routes/actas.ts` |
+| Convocatorias | Implementado (edición en cualquier estado, 2026-05-27) | `routes/convocatorias.ts` |
+| **Actas** | Implementado (sincronización con convocatoria, 2026-05-27) | `routes/actas.ts` |
 | Expedientes + subvenciones | Implementado | `routes/expedientes.ts`, `subvenciones.ts` |
 | Integración Odoo | Implementado | `routes/` + `lib/` |
 | Panel de versión (`/api/version`) | Implementado | `routes/health.ts`, `lib/version.ts` |
@@ -92,6 +100,18 @@ Cada paso pre-rellena el siguiente y enlaza (no reescribe). Ver `docs/DEFINICION
 
 ### Buscador de actas firmadas (cambio reciente)
 - Pantalla `/admin/actas/firmadas` (`BuscadorActasFirmadas.tsx`), roles `directivo`/`contable`.
+
+### Sincronización acta ↔ convocatoria (2026-05-27)
+- Nuevo endpoint **`POST /admin/actas/:id/sincronizar-convocatoria`** (solo `contable`/admin; acta en `borrador` y con `convocatoria_id`).
+- Recalcula los puntos del acta según el orden del día **actual** de la convocatoria: **añade** puntos nuevos, **actualiza** título/descripción de los existentes (preservando acuerdo/resultado/expediente/notas) y **propone eliminar** los puntos cuyo punto de convocatoria ya no existe (los puntos libres, `convocatoria_punto_id NULL`, se conservan). Renumera `orden`.
+- **Doble fase:** sin `confirmar` → *dry-run* con `resumen`+`detalle`; con `confirmar:true` → aplica. Si hay eliminados **con datos escritos** y no llega `confirmar_datos:true`, no borra y devuelve `requiere_confirmacion:true`.
+- **Frontend** (`GestionActas.tsx`): botón "Sincronizar con la convocatoria" en actas borrador con convocatoria + modal de confirmación con resumen y checkbox obligatorio si hay puntos con datos.
+
+### Convocatorias — edición en cualquier estado (2026-05-27)
+- Se permite editar cabecera y puntos en convocatorias `borrador`, `publicada` y `celebrada` (antes solo en `borrador`). Ver `GestionConvocatorias.tsx` / `routes/convocatorias.ts`.
+
+### Robustez ante ausencia de `db_propuestas_junta` (2026-05-27)
+- `actas.ts` y `convocatorias.ts` detectan si existe `db_propuestas_junta` (`to_regclass` cacheado) y usan variantes de las consultas **sin** `LEFT JOIN`/sin escritura al buzón cuando la tabla no está instalada. Evita el error `relation "db_propuestas_junta" does not exist` (que afectaba también a un simple `LEFT JOIN`) al crear actas/convocatorias en entornos sin el módulo del buzón.
 
 ## 7. Base de datos — convenciones
 
@@ -116,6 +136,23 @@ Cada paso pre-rellena el siguiente y enlaza (no reescribe). Ver `docs/DEFINICION
 
 > Añadir una entrada por bloque de cambios, lo más reciente arriba.
 
+### 2026-05-27 — Sincronización acta↔convocatoria, edición de convocatorias y robustez del buzón
+- **Rama:** `test/dinahosting`. **Commits:** `6ae1388` (sincronización + edición convocatorias + UX acta nueva), `91d40dc` (robustez `db_propuestas_junta` + `apply-sql.mjs`).
+- **Backend `routes/actas.ts`:**
+  - Nuevo `POST /admin/actas/:id/sincronizar-convocatoria` (dry-run + aplicar; ver sección 6). Solo acta en `borrador` con convocatoria; transaccional.
+  - Helper `tablaExiste()`/`propuestasDisponibles()` (vía `to_regclass`, cacheado). Las consultas con `LEFT JOIN db_propuestas_junta` (listado/detalle/email/firmadas/from-convocatoria/sincronizar) y los bloques que resuelven propuestas (`crearComoCompleta`, `completar`) se adaptan/saltan si la tabla no existe.
+- **Backend `routes/convocatorias.ts`:** mismo helper `tablaExisteConv()`; el `UPDATE db_propuestas_junta` al borrar convocatoria y el `SELECT` de propuestas al leer una convocatoria se ejecutan solo si la tabla existe. Se permite **editar en cualquier estado**.
+- **Frontend:**
+  - `GestionActas.tsx`: botón **"Sincronizar con la convocatoria"** + modal con resumen (añadidos/actualizados/eliminados) y checkbox obligatorio si hay puntos con datos. Mensaje bajo el botón de guardar en *nueva acta* ("No guardado, debe seleccionar convocatoria…" / "Guardado correctamente como borrador / como completa").
+  - `GestionConvocatorias.tsx`: edición habilitada en `borrador`/`publicada`/`celebrada`.
+  - `translations.ts`: claves `actas.sync.*` (es/eu).
+- **Scripts:** nuevo **`scripts/apply-sql.mjs`** — aplica ficheros `.sql` vía `pg` (resuelto desde `lib/db`) sin necesitar `psql`; útil porque el servidor de Dinahosting no tiene `psql`. Cada fichero en transacción.
+- **Despliegue/migraciones (test):**
+  - `scripts/dinahosting-test.env.local` tenía una `DATABASE_URL` **errónea** (`localhost`/`denokbat_test`/usuario `denokdantza`). Corregida a la real de `app.local.js`: `postgres://denokdantza2026:***@pgsql03.dinaserver.com:5432/denokdantza`.
+  - Migraciones del buzón aplicadas con `apply-sql.mjs`: `fix-db-propuestas-junta.sql`, `...-origenes-v2.sql`, `...-antecedentes.sql` → `OK` (base `denokdantza`, host `46.231.127.126`).
+  - Copias obsoletas `dinahosting-test.env.local.save.1` / `.save.3` borradas en el servidor.
+- **Estado:** probado en test ✅ — "Guardado correctamente como borrador" y "acta sincronizada con la convocatoria".
+
 ### 2026-05-26 — Refactor actas: estado `aceptada` + PDF en `db_actas_pdf`
 - **Rama:** `test/dinahosting`. **Commits:** `5fab7f5` (refactor actas), `d1bf11e` (buscador + panel versión).
 - **Backend `routes/actas.ts`:** `ensureActasSchema` crea `db_actas_pdf` (1:1, constraint `db_actas_pdf_acta_uq`), normaliza `firmada`→`aceptada` y reafirma el CHECK `(borrador, completa, aceptada)`. `mapActa` lee el PDF del join (`pdf_pdf_*` → `pdf_*`). Listado/detalle/`actas-firmadas`/`enviar-email`/`duplicados-mes` con `LEFT JOIN db_actas_pdf`. `firmar` hace **upsert** en `db_actas_pdf` y deja el acta en `aceptada`; `firmar-otro-mes` es **transaccional**.
@@ -139,3 +176,5 @@ Cada paso pre-rellena el siguiente y enlaza (no reescribe). Ver `docs/DEFINICION
 - Considerar traspaso de datos de actas local→test con `export-table.sh`/`publish-table.sh` si se necesita contenido de prueba realista.
 - Optimización de build (chunk > 500 kB) — opcional, no urgente.
 - Aplicar `fix-db-actas-aceptada.sql` como owner si en algún entorno el usuario de la app no puede alterar `db_actas` (síntoma: 503 con hint SQL).
+- **`scripts/dinahosting-test.env.local` vs `app.local.js`:** mantener sincronizadas las credenciales de test (la fuente de verdad de la app es `app.local.js`). Revisar si conviene que el deploy genere/valide ese `.env.local`.
+- Migraciones del buzón ya aplicadas en **test**; pendiente aplicarlas igualmente en **local** como owner (en local daban `must be owner of table` con el usuario de app) y en futura **producción**.
